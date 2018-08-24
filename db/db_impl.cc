@@ -160,8 +160,8 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   mem_->Ref();
   has_imm_.Release_Store(NULL);
 
-	for(int lev=0;lev<max_level;lev++){
-			latest_sst_num[lev]=0;
+	for(int i = 0; i < config::kNumLevels; ++i) {
+		latest_sst_num[i] = 0;
 	}
   // Reserve ten files or so for other uses and give the rest to TableCache.
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
@@ -169,6 +169,11 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
 
   versions_ = new VersionSet(dbname_, &options_, table_cache_,
                              &internal_comparator_);
+  // env_->StartThread(&DBImpl::CompactMemTableWrapper, this);
+  // // 
+  // for (int i = 0; i < config::kNumLevels; ++i) {
+	//   env_->StartThread(&DBImpl::CompactLevelWrapper, this);
+  // }
 }
 
 DBImpl::~DBImpl() {
@@ -1354,21 +1359,20 @@ int  DBImpl::getLevel(){
 
 void  DBImpl::Compact_thread_create(int thread_num){
 
-	pthread_create(&pth_compact_mem, NULL,  &DBImpl::Compact_mem_threads_starter, this);
+	pthread_create(&pth_compact_mem, NULL,  &DBImpl::CompactMemTableWrapper, this);
 	
 	for(int i=0;i<thread_num;i++){
-		pthread_create(&pth_compact[i], NULL,  &DBImpl::Compact_threads_starter, this);
+		pthread_create(&pth_compact[i], NULL,  &DBImpl::CompactLevelWrapper, this);
 	}
-
 }
 
 int gt=0;
 
 
-void DBImpl::Compact_mem_back(){
+void DBImpl::Compact_mem_back() {
 	int thread_id=-1;
 	printf("dbimpl, Compact_mem_back, I am compactor thread, id=%d\n", thread_id);
-	while(true){
+	while(true) {
 			//printf("I am compactor thread, begin while\n");
 
 		mutex_.Lock();
@@ -1402,7 +1406,7 @@ void DBImpl::Compact_mem_back(){
 
 }
 
-void DBImpl::Compact_back(){
+void DBImpl::Compact_back() {
 	int thread_id;
 	mutex_for_all.Lock();
 		thread_id=compactor_id;
@@ -1420,32 +1424,20 @@ void DBImpl::Compact_back(){
 
 	//printf("dbimpl, Compact_back, I am compactor thread, after sleep, thread_id=%d\n", thread_id);
 	//exit(9);
-	while(true){
-				
+	while(true) {
 			mutex_.Lock();
-			
-			while( versions_->Need_compact(thread_id)==0){
-			
+			while( versions_->Need_compact(thread_id)==0) {
 				cv_for_levels.Wait();
-			
 			}
-			
 			//mutex_.Unlock();
-			
-		//mutex_for_all.Lock();//single thread
-		//mutex_.Lock();
-			//printf("dbimpl, Compact_back, level %d begin\n", thread_id);
+      //mutex_for_all.Lock();//single thread
+      //mutex_.Lock();
+			printf("dbimpl, Compact_back, level %d begin\n", thread_id);
 			Compact_level(thread_id);//mutex_ is unlocked in the DoCompaction so other threads can also enter the DoCompaction.
 			//printf("dbimpl, Compact_back, level %d end\n", thread_id);
-		mutex_.Unlock();
-		//mutex_for_all.Unlock();
-	
-			
-			
-		
-	
+      mutex_.Unlock();
+      //mutex_for_all.Unlock();
 	}
-
 }
 
 void DBImpl::Compact_level(int level){
@@ -1482,102 +1474,97 @@ void DBImpl::Compact_level(int level){
 
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
-		//printf("I am write, has_created=%d\n",has_created);
-		//printf("dbimp,write begin\n");
-		
-			 if(!has_created){
-			 
-				for(int i=0;i<max_level;i++){
-					//pthread_mutex_init(&mu_for_wait[i],NULL);
-					//pthread_cond_init(&cv_for_wait[i], NULL);
-				
-				}
-				
-				compactor_id=0;
-				Compact_thread_create(max_level);//this create number of threas for disk level, and additional thread for memory
-				//printf("dbimpl, Write, after Compact_thread_create, sleep\n");
-				//sleep(999);
-				has_created=1;
-								
-				
-			 }
-		
-		//exit(9);
-		  Writer w(&mutex_);
-		  w.batch = my_batch;
-		  w.sync = options.sync;
-		  w.done = false;
-			//printf("dbimp,write ,b llllllllllllll\n");
-		  MutexLock l(&mutex_);
-		  //printf("dbimp,write ,a llllllllllllll\n");
-		  writers_.push_back(&w);
-		  //printf("dbimp,write ,b wwwwwwwwwwwww\n");
-		  while (!w.done && &w != writers_.front()) {
-			w.cv.Wait();
-		  }
-		 //printf("dbimp,write ,a wwwwwwwwwwwww\n");
-		  if (w.done) {
-			// printf("dbimp,write ,dddddddddddddddd\n");
-			return w.status;
-		  }
+  //printf("I am write, has_created=%d\n",has_created);
+  //printf("dbimp,write begin\n");
+  if(!has_created) {
+    for(int i=0;i<max_level;i++){
+      //pthread_mutex_init(&mu_for_wait[i],NULL);
+      //pthread_cond_init(&cv_for_wait[i], NULL);
+    }
+    
+    compactor_id=0;
+    Compact_thread_create(max_level);//this create number of threas for disk level, and additional thread for memory
+    //printf("dbimpl, Write, after Compact_thread_create, sleep\n");
+    //sleep(999);
+    has_created=1;
+  }
 
-		  // May temporarily unlock and wait.
-		  Status status = MakeRoomForWrite(my_batch == NULL);
-		  //printf("dbimp,write ,00000000000000000000\n");
-		  uint64_t last_sequence = versions_->LastSequence();
-		  Writer* last_writer = &w;
-		  if (status.ok() && my_batch != NULL) {  // NULL batch is for compactions
-			WriteBatch* updates = BuildBatchGroup(&last_writer);
-			WriteBatchInternal::SetSequence(updates, last_sequence + 1);
-			last_sequence += WriteBatchInternal::Count(updates);
+//exit(9);
+  Writer w(&mutex_);
+  w.batch = my_batch;
+  w.sync = options.sync;
+  w.done = false;
+  //printf("dbimp,write ,b llllllllllllll\n");
+  MutexLock l(&mutex_);
+  //printf("dbimp,write ,a llllllllllllll\n");
+  writers_.push_back(&w);
+  //printf("dbimp,write ,b wwwwwwwwwwwww\n");
+  while (!w.done && &w != writers_.front()) {
+  w.cv.Wait();
+  }
+  //printf("dbimp,write ,a wwwwwwwwwwwww\n");
+  if (w.done) {
+  // printf("dbimp,write ,dddddddddddddddd\n");
+  return w.status;
+  }
 
-			// Add to log and apply to memtable.  We can release the lock
-			// during this phase since &w is currently responsible for logging
-			// and protects against concurrent loggers and concurrent writes
-			// into mem_.
-			{
-			  mutex_.Unlock();
-			  status = log_->AddRecord(WriteBatchInternal::Contents(updates));
-			  bool sync_error = false;
-			  if (status.ok() && options.sync) {
-				status = logfile_->Sync();
-				if (!status.ok()) {
-				  sync_error = true;
-				}
-			  }
-			  if (status.ok()) {
-				status = WriteBatchInternal::InsertInto(updates, mem_);
-			  }
-			  mutex_.Lock();
-			  if (sync_error) {
-				// The state of the log file is indeterminate: the log record we
-				// just added may or may not show up when the DB is re-opened.
-				// So we force the DB into a mode where all future writes fail.
-				RecordBackgroundError(status);
-			  }
-			}
-			if (updates == tmp_batch_) tmp_batch_->Clear();
+  // May temporarily unlock and wait.
+  Status status = MakeRoomForWrite(my_batch == NULL);
+  //printf("dbimp,write ,00000000000000000000\n");
+  uint64_t last_sequence = versions_->LastSequence();
+  Writer* last_writer = &w;
+  if (status.ok() && my_batch != NULL) {  // NULL batch is for compactions
+  WriteBatch* updates = BuildBatchGroup(&last_writer);
+  WriteBatchInternal::SetSequence(updates, last_sequence + 1);
+  last_sequence += WriteBatchInternal::Count(updates);
 
-			versions_->SetLastSequence(last_sequence);
-		  }
+  // Add to log and apply to memtable.  We can release the lock
+  // during this phase since &w is currently responsible for logging
+  // and protects against concurrent loggers and concurrent writes
+  // into mem_.
+  {
+    mutex_.Unlock();
+    status = log_->AddRecord(WriteBatchInternal::Contents(updates));
+    bool sync_error = false;
+    if (status.ok() && options.sync) {
+    status = logfile_->Sync();
+    if (!status.ok()) {
+      sync_error = true;
+    }
+    }
+    if (status.ok()) {
+    status = WriteBatchInternal::InsertInto(updates, mem_);
+    }
+    mutex_.Lock();
+    if (sync_error) {
+    // The state of the log file is indeterminate: the log record we
+    // just added may or may not show up when the DB is re-opened.
+    // So we force the DB into a mode where all future writes fail.
+    RecordBackgroundError(status);
+    }
+  }
+  if (updates == tmp_batch_) tmp_batch_->Clear();
 
-		  while (true) {
-			Writer* ready = writers_.front();
-			writers_.pop_front();
-			if (ready != &w) {
-			  ready->status = status;
-			  ready->done = true;
-			  ready->cv.Signal();
-			}
-			if (ready == last_writer) break;
-		  }
+  versions_->SetLastSequence(last_sequence);
+  }
 
-		  // Notify new head of write queue
-		  if (!writers_.empty()) {
-			writers_.front()->cv.Signal();
-		  }
-				//printf("dbimp,write end\n");
-		  return status;
+  while (true) {
+  Writer* ready = writers_.front();
+  writers_.pop_front();
+  if (ready != &w) {
+    ready->status = status;
+    ready->done = true;
+    ready->cv.Signal();
+  }
+  if (ready == last_writer) break;
+  }
+
+  // Notify new head of write queue
+  if (!writers_.empty()) {
+  writers_.front()->cv.Signal();
+  }
+    //printf("dbimp,write end\n");
+  return status;
 }//end write
 
 // REQUIRES: Writer list must be non-empty

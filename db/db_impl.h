@@ -139,87 +139,42 @@ class DBImpl : public DB {
   bool owns_info_log_;
   bool owns_cache_;
   const std::string dbname_;
-
-  
-  
-  
-  
-  
-  
  //------------------------------------------------lsm-forest begin-------------------------------------
+
+
 bool has_created;
 #define max_level config::kNumLevels
 void  Compact_thread_create(int thread_num);
 
-pthread_t pth_compact[max_level];
+pthread_t pth_compact[config::kNumLevels];
 pthread_t pth_compact_mem;
 
 public:
 virtual void Compact_level(int level);
 void Compact_back();
 
-int latest_sst_num[max_level];
+int latest_sst_num[config::kNumLevels];
 
 
-static void* Compact_threads_starter(void *arg){
+static void* CompactLevelWrapper(void *arg){
 	reinterpret_cast<DBImpl*>(arg)->Compact_back();
-	return NULL;
+  return NULL;
 }
 
 void Compact_mem_back();
-static void* Compact_mem_threads_starter(void *arg){
+static void* CompactMemTableWrapper(void *arg) {
 	reinterpret_cast<DBImpl*>(arg)->Compact_mem_back();
-	return NULL;
+  return NULL;
 }
 
 port::Mutex mutex_for_all;
-int compactor_id;
-
+int compactor_id = 0;
 
 port::Mutex mutex_for_wait_mem;
 port::CondVar cv_for_wait_mem;
 port::CondVar cv_for_levels;
 
-
-
-//port::Mutex mutex_for_comp;
-
-
-//port::Mutex mutex_for_wait[4];
-//port::CondVar cv_for_wait[1];
-
-// port::Mutex mutex_for_wait_0;
-// port::CondVar cv_for_wait_0;
-
-// port::Mutex mutex_for_wait_1;
-// port::CondVar cv_for_wait_1;
-
-// port::Mutex mutex_for_wait_2;
-// port::CondVar cv_for_wait_2;
-
-// port::Mutex mutex_for_wait_3;
-// port::CondVar cv_for_wait_3;
-
-// port::Mutex mutex_for_wait_4;
-// port::CondVar cv_for_wait_4;
-
-// port::Mutex mutex_for_wait[max_level];
-// port::Mutex mutex_for_wait_mem;
-
-
- //------------------------------------------------lsm-forest end-------------------------------------
-
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
+//------------------------------------------------lsm-forest end-------------------------------------
   // table_cache_ provides its own synchronization
   TableCache* table_cache_;
 
