@@ -146,8 +146,6 @@ class DB {
   //    db->CompactRange(NULL, NULL);
   virtual void CompactRange(const Slice* begin, const Slice* end) = 0;
   
-  virtual void Compact_level(int level)=0;
-
  private:
   // No copying allowed
   DB(const DB&);

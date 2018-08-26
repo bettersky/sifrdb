@@ -2020,17 +2020,13 @@ void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
 	//printf("version_set.cc, v=%p, current_=%p\n",v, current_);
     for (int level = 0; level < config::kNumLevels; level++) {
       //const std::vector<FileMetaData*>& files = v->files_[level];
-		const std::vector<LogicalMetaData*>& logical_files = v->logical_files_[level];
-			//printf("version_set.cc, AddLiveFiles, lev=%d, Num_logical_file=%d \n",level,v->logical_files_[level].size());
-		for(size_t i=0;i<logical_files.size();i++){
-			for(size_t j=0;j<logical_files[i]->physical_files.size();j++){
-				live->insert(logical_files[i]->physical_files[j].number);
-			}
-		}
-		//for (size_t i = 0; i < files.size(); i++) {
-			//live->insert(files[i]->number);
-		//}
-	
+      const std::vector<LogicalMetaData*>& logical_files = v->logical_files_[level];
+        //printf("version_set.cc, AddLiveFiles, lev=%d, Num_logical_file=%d \n",level,v->logical_files_[level].size());
+      for(size_t i=0;i<logical_files.size();i++){
+        for(size_t j=0;j<logical_files[i]->physical_files.size();j++){
+          live->insert(logical_files[i]->physical_files[j].number);
+        }
+      }
     }
   }
 }

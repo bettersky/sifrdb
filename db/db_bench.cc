@@ -1087,9 +1087,6 @@ void DoLoad(ThreadState* thread, bool seq){
       }
       key[strlen(key)-1]='\0';//regular the key, alter the newline to end of string
       //printf("i=%d,%s\n",i,key);
-      
-      
-      
     }
   
     value_size_=rand()%200+1;//vary the value size
@@ -1154,7 +1151,7 @@ void DoLoad(ThreadState* thread, bool seq){
 	
 	fclose(stats_log_);
 	printf("write finished\n");
-    thread->stats.AddBytes(bytes);
+  thread->stats.AddBytes(bytes);
 	
   }
 

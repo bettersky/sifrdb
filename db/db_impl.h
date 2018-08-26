@@ -145,9 +145,6 @@ Status BackgroundCompaction(int level) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 void  Compact_thread_create(int thread_num);
 
 public:
-virtual void Compact_level(int level);
-//void Compact_back();
-
 int latest_sst_num[config::kNumLevels];
 
 // new 
