@@ -142,29 +142,13 @@ class DBImpl : public DB {
  //------------------------------------------------lsm-forest begin-------------------------------------
 
 Status BackgroundCompaction(int level) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-//bool has_created;
-//#define max_level config::kNumLevels
 void  Compact_thread_create(int thread_num);
-
-pthread_t pth_compact[config::kNumLevels];
-pthread_t pth_compact_mem;
 
 public:
 virtual void Compact_level(int level);
 //void Compact_back();
 
 int latest_sst_num[config::kNumLevels];
-
-// static void* CompactLevelWrapper(void *arg){
-// 	reinterpret_cast<DBImpl*>(arg)->Compact_back();
-//   return NULL;
-// }
-
-// void Compact_mem_back();
-// static void* CompactMemTableWrapper(void *arg) {
-// 	reinterpret_cast<DBImpl*>(arg)->Compact_mem_back();
-//   return NULL;
-// }
 
 // new 
 static void CompactLevelWrapper(void *db){
@@ -178,12 +162,7 @@ static void CompactMemTableWrapper(void *db) {
 void CompactMemTableThread();
 void CompactLevelThread();
 
-//port::Mutex mutex_for_all;
 int compactor_id = 0;
-
-//port::Mutex mutex_for_wait_mem;
-//port::CondVar cv_for_wait_mem;
-//port::CondVar cv_for_levels;
 
 // Tell the foreground that background has done something of note
 port::CondVar bg_fg_cv_;

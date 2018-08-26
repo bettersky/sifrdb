@@ -2229,18 +2229,6 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
       level = i;
       return true;
     }
-    // if(current_->logical_files_[i].size() < growth_factor) {
-    //   //the level need no compaction
-    //   return false;
-    // // TODO : i+1 overflow 
-    // } else if(current_->logical_files_[i + 1].size() >= growth_factor*1.5) {
-    //   //the next level has no space
-    //   return false;
-    // } else {
-    //   printf("NeedsCompaction: %d\n", i);
-    //   level = i;
-    //   return true;
-    // }
   }
 
   if (current_->logical_files_[0].size() > growth_factor) {
@@ -2567,7 +2555,7 @@ void Compaction::ReleaseInputs() {
   }
 }
 
-void Compaction::DoGroup(){
+void Compaction::DoGroup() {
 		const Comparator* user_cmp = input_version_->vset_->icmp_.user_comparator();
 		int num=logical_files_inputs_.size();//number of the logical files
 		//build iterator for the physical files of each logical_files_inputs_
@@ -2648,11 +2636,6 @@ void Compaction::DoGroup(){
 			//printf("temp_group size=%d, groups size=%d\n",temp_group.size(),groups.size());
 			//
 			//while(1)
-		
-		
-		
-
-
 }
 
 }  // namespace leveldb

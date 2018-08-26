@@ -36,9 +36,7 @@
 #include "unistd.h"
 
 extern int growth_factor; 
-
 extern int fly[];
-
 namespace leveldb {
 
 const int kNumNonTableCacheFiles = 10;
@@ -137,9 +135,6 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       bg_cv_(&mutex_),
       mem_(new MemTable(internal_comparator_)),
       imm_(NULL),	
-	  //has_created(false), 
-	  //cv_for_wait_mem(&mutex_),
-	  //cv_for_levels(&mutex_),
       bg_fg_cv_(&mutex_),
       bg_compaction_cv_(&mutex_),
       bg_memtable_cv_(&mutex_),
@@ -319,8 +314,6 @@ void DBImpl::DeleteObsoleteFiles() {
       }
     }
   }
-
-	
 }
 
 Status DBImpl::Recover(VersionEdit* edit) {
@@ -511,10 +504,6 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
 
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
-								
-		
-	
-	
 	  mutex_.AssertHeld();
 	  const uint64_t start_micros = env_->NowMicros();
 	  //FileMetaData meta;
@@ -526,20 +515,16 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 	  
 	  pending_outputs_.insert(physical_meta.number);//this is a interesting thing needs to be reviewed.
 	  Iterator* iter = mem->NewIterator();
-	  
-	
 	//printf("WriteLevel0Table, number=%d\n", physical_meta.number);
 	  Status s;
 	  {
-		mutex_.Unlock();
-		
-		//printf("dbimpl,Buildtable\n");
-		s = BuildTable(dbname_, env_, options_, table_cache_, iter, &physical_meta);
-		//exit(0);
-		//return Status::OK();
-		mutex_.Lock();
-		
-		
+      mutex_.Unlock();
+      
+      //printf("dbimpl,Buildtable\n");
+      s = BuildTable(dbname_, env_, options_, table_cache_, iter, &physical_meta);
+      //exit(0);
+      //return Status::OK();
+      mutex_.Lock();
 	  }
 
 	  delete iter;
@@ -571,61 +556,6 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 	  //printf("dbimpl, WriteLevel0Table end\n");
 	  //exit(0);
 	  return s;
-}
-
-void DBImpl::CompactMemTable() {
-	  //mutex_.AssertHeld();
-	 
-	  if(imm_==NULL){
-			fprintf(stderr,"CompactMemTable, imm_ is null, exit\n");
-			exit(9);
-	}
-	  assert(imm_ != NULL);
-	
-	//printf("CompactMemTable,begin\n");
-	  // Save the contents of the memtable as a new Table
-	  VersionEdit edit;
-	  Version* base = versions_->current();
-	  base->Ref();
-	  //return;
-	  Status s = WriteLevel0Table(imm_, &edit, base);
-	  
-	  base->Unref();
-
-	  if (s.ok() && shutting_down_.Acquire_Load()) {
-		  s = Status::IOError("Deleting DB during memtable compaction");
-	  }
-
-	  // Replace immutable memtable with the generated Table
-	  if (s.ok()) {
-		edit.SetPrevLogNumber(0);
-		edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
-		s = versions_->LogAndApply(&edit, &mutex_);
-	  }
-
-	  if (s.ok()) {
-		// Commit to the new state
-// return ;
-		imm_->Unref();
-
-		imm_ = NULL;
-
-		has_imm_.Release_Store(NULL);
-		//printf("dbimpl,CompactMemTable, before DeleteObsoleteFiles\n");
-		DeleteObsoleteFiles();
-	  } else {
-		RecordBackgroundError(s);
-	  }
-		int static counter=0;
-		counter++;
-	  //printf("CompactMemTable,end,counter=%d\n",counter);
-		if(counter==3){
-			//exit(9);
-		}
-		
-		//printf("dbimpl, CompactMemTable\n");
-		//exit(9);
-	  
 }
 
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {//blank
@@ -705,9 +635,6 @@ void DBImpl::RecordBackgroundError(const Status& s) {
     bg_cv_.SignalAll();
   }
 }
-
-
-
 
 void DBImpl::CleanupCompaction(CompactionState* compact) {
   mutex_.AssertHeld();
@@ -954,7 +881,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
  }
 
 
- Status DBImpl::Conca_merge(CompactionState* compact){
+ Status DBImpl::Conca_merge(CompactionState* compact) {
  	Status status;
 	//printf("dbimpl, Conca_merge, begin, level-------------%d--------------------\n", compact->compaction->level());
 	Iterator* input = versions_->MakeInputIterator_conca(compact->compaction);
@@ -1120,22 +1047,11 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   // Release mutex while we're actually doing the compaction work
 
   mutex_.Unlock();
-  //***********************compact begin		
-  //compact->compaction->DoGroup();//now we can use compact->compaction->groups
   compact->output_logical_file.number = versions_->NewFileNumber();
 
-  //int groups_size= compact->compaction->groups.size();
-  //printf("DoCompactionWork, groups size=%d\n",groups_size);//always 1 for random workload
-  //for(int i=0;i<groups_size;i++){//for each group in groups
-    // Group_merge(i, compact);	
-  // }
-    
   Conca_merge(compact);
   mutex_.Lock();
   InstallCompactionResults(compact);//store the edit to manifest.
-  //***********************compact end
-  //printf("dbimpl.cc, DoCompactionWork, end\n");
-  //exit(9);
   return status;
 }
 

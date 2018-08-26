@@ -165,10 +165,6 @@ class VersionEdit {
 	//std::pair<int, LogicalMetaData> new_logical_file;
 	
 	std::vector< std::pair<int, LogicalMetaData> > new_logical_files_;
-
-
-
-
 };
 
 }  // namespace leveldb

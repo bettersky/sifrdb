@@ -598,9 +598,7 @@ class Benchmark {
 
   void Run() {
     PrintHeader();
-	  printf(" I amd db_bench.cc , Run, after PrintHeader \n");
     Open();
-    printf(" I amd db_bench.cc , Run, after Open \n");
 	  //exit(1);//test if log is deleted  --no
     const char* benchmarks = FLAGS_benchmarks;
 	  //printf(" I amd db_bench.cc , Run, `00000\n");
@@ -712,15 +710,13 @@ class Benchmark {
           fprintf(stderr, "unknown benchmark '%s'\n", name.ToString().c_str());
         }
       }
-// printf(" _____________I amd db_bench.cc , Run, after if,fresh_db=%d, FLAGS_use_existing_db=%d\n",fresh_db,FLAGS_use_existing_db);
-      //exit(1);//test if log is deleted  --no
-	  if (fresh_db) {
+
+	    if (fresh_db) {
         if (FLAGS_use_existing_db) {
           fprintf(stdout, "%-12s : skipped (--use_existing_db is true)\n",
                   name.ToString().c_str());
           method = NULL;
         } else {
-			//printf("____________I amd db_bench.cc before delete\n");
           delete db_;
           db_ = NULL;
 		 // printf("____________I amd db_bench.cc before DestroyDB\n");
@@ -782,8 +778,6 @@ class Benchmark {
 
   void RunBenchmark(int n, Slice name,
                     void (Benchmark::*method)(ThreadState*)) {
-						
-				//printf(" I amd db_bench.cc , RunBenchmark\n");
     SharedState shared;
     shared.total = n;
     shared.num_initialized = 0;
@@ -965,25 +959,16 @@ class Benchmark {
 	// }	
 	exit(9);
 		//db_->Compact_level(3);
-	
-	
-
 } 
 //----------------------------------------------------------------------------------  
-
-
 
 void LoadYCSB(ThreadState* thread) {
 		printf(" db_bench, LoadYCSB\n");
 		DoLoad(thread,false);
-		
-		
-  }
+}
+
 void LoadYCSBSorted(ThreadState* thread) {
-   
 		printf("db_bench, LoadYCSBSorted\n");
-		
-		
 		//sync_queue = (std::queue<leveldb::Flash_file*>*) malloc(sizeof(std::queue<leveldb::Flash_file*>));
 		//leveldb::Flash_file* f1;
 		//sync_queue->push(f1);
