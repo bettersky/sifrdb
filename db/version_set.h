@@ -234,8 +234,6 @@ port::CondVar cv_for_scan;
 //typedef std::deque<ForestItem> ForestQueue;
 //ForestQueue queue_;
 
-
-
 #define Max_Thread_Num 100
 pthread_t pth_forest[Max_Thread_Num];
 void Fores_thread_create(int thread_num);
@@ -245,8 +243,6 @@ static void* Back_starter(void *arg){
 	return NULL;
 }
 
-
-
 bool has_created;
 uint64_t logical_file_total;
 volatile int thread_idle;
@@ -254,7 +250,7 @@ volatile int thread_idle;
 LogicalMetaData *logical_files_set[1000];
 
 		
-struct Searching_item{
+struct Searching_item {
 
 		ReadOptions options;
 		const Comparator* ucmp;
@@ -423,10 +419,11 @@ class VersionSet {
 		Iterator* MakeInputIterator_conca(Compaction* c);
 
   // Returns true iff some level needs a compaction.
-  bool NeedsCompaction() const {
-    Version* v = current_;
-    return (v->compaction_score_ >= 1) || (v->file_to_compact_ != NULL);
-  }
+  bool NeedsCompaction(bool* locked, int& level);
+  // bool NeedsCompaction() const {
+  //   Version* v = current_;
+  //   return (v->compaction_score_ >= 1) || (v->file_to_compact_ != NULL);
+  // }
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.

@@ -141,9 +141,9 @@ class DBImpl : public DB {
   const std::string dbname_;
  //------------------------------------------------lsm-forest begin-------------------------------------
 
-
-bool has_created;
-#define max_level config::kNumLevels
+Status BackgroundCompaction(int level) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+//bool has_created;
+//#define max_level config::kNumLevels
 void  Compact_thread_create(int thread_num);
 
 pthread_t pth_compact[config::kNumLevels];
@@ -151,28 +151,50 @@ pthread_t pth_compact_mem;
 
 public:
 virtual void Compact_level(int level);
-void Compact_back();
+//void Compact_back();
 
 int latest_sst_num[config::kNumLevels];
 
+// static void* CompactLevelWrapper(void *arg){
+// 	reinterpret_cast<DBImpl*>(arg)->Compact_back();
+//   return NULL;
+// }
 
-static void* CompactLevelWrapper(void *arg){
-	reinterpret_cast<DBImpl*>(arg)->Compact_back();
-  return NULL;
+// void Compact_mem_back();
+// static void* CompactMemTableWrapper(void *arg) {
+// 	reinterpret_cast<DBImpl*>(arg)->Compact_mem_back();
+//   return NULL;
+// }
+
+// new 
+static void CompactLevelWrapper(void *db){
+	reinterpret_cast<DBImpl*>(db)->CompactLevelThread();
 }
 
-void Compact_mem_back();
-static void* CompactMemTableWrapper(void *arg) {
-	reinterpret_cast<DBImpl*>(arg)->Compact_mem_back();
-  return NULL;
+static void CompactMemTableWrapper(void *db) {
+	reinterpret_cast<DBImpl*>(db)->CompactMemTableThread();
 }
 
-port::Mutex mutex_for_all;
+void CompactMemTableThread();
+void CompactLevelThread();
+
+//port::Mutex mutex_for_all;
 int compactor_id = 0;
 
-port::Mutex mutex_for_wait_mem;
-port::CondVar cv_for_wait_mem;
-port::CondVar cv_for_levels;
+//port::Mutex mutex_for_wait_mem;
+//port::CondVar cv_for_wait_mem;
+//port::CondVar cv_for_levels;
+
+// Tell the foreground that background has done something of note
+port::CondVar bg_fg_cv_;
+bool allow_background_activity_;
+bool levels_locked_[leveldb::config::kNumLevels];
+
+// Communicate with compaction background thread
+port::CondVar bg_compaction_cv_;
+// Communicate with memtable->L0 background thread
+port::CondVar bg_memtable_cv_;
+int num_bg_threads_;
 
 //------------------------------------------------lsm-forest end-------------------------------------
   // table_cache_ provides its own synchronization

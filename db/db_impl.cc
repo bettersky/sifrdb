@@ -137,19 +137,13 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       bg_cv_(&mutex_),
       mem_(new MemTable(internal_comparator_)),
       imm_(NULL),	
-	  
-	  has_created(false), 
-	  cv_for_wait_mem(&mutex_),
-	  cv_for_levels(&mutex_),
-	  //cv_for_wait_mem(&mutex_for_wait_mem),
-	  //(cv_for_wait[0])(&mutex_for_wait[0]),
-	  //cv_for_wait[0](&mutex_for_wait[0]),
-	  // cv_for_wait[1](&mutex_for_wait[1]),
-	  // cv_for_wait[2](&mutex_for_wait[2]),
-	  // cv_for_wait[3](&mutex_for_wait[3]),
-	  // cv_for_wait[4](&mutex_for_wait[4]),
-	  
-	  
+	  //has_created(false), 
+	  //cv_for_wait_mem(&mutex_),
+	  //cv_for_levels(&mutex_),
+      bg_fg_cv_(&mutex_),
+      bg_compaction_cv_(&mutex_),
+      bg_memtable_cv_(&mutex_),
+      num_bg_threads_(0),
       logfile_(NULL),
       logfile_number_(0),
       log_(NULL),
@@ -157,6 +151,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       tmp_batch_(new WriteBatch),
       bg_compaction_scheduled_(false),
       manual_compaction_(NULL) {
+  mutex_.Lock();
   mem_->Ref();
   has_imm_.Release_Store(NULL);
 
@@ -166,23 +161,34 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   // Reserve ten files or so for other uses and give the rest to TableCache.
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
-
   versions_ = new VersionSet(dbname_, &options_, table_cache_,
                              &internal_comparator_);
-  // env_->StartThread(&DBImpl::CompactMemTableWrapper, this);
-  // // 
-  // for (int i = 0; i < config::kNumLevels; ++i) {
-	//   env_->StartThread(&DBImpl::CompactLevelWrapper, this);
-  // }
+  env_->StartThread(&DBImpl::CompactMemTableWrapper, this);
+  //  num_bg_threads_ = config::kNumLevels
+  // TODO debug 1
+  for (int i = 0; i < 2; ++i) {
+	  env_->StartThread(&DBImpl::CompactLevelWrapper, this);
+  }
+  num_bg_threads_ = 2 + 1;
+  for (unsigned i = 0; i < config::kNumLevels; ++i) {
+    levels_locked_[i] = false;
+  }
+  mutex_.Unlock();
 }
 
 DBImpl::~DBImpl() {
   // Wait for background work to finish
   mutex_.Lock();
   shutting_down_.Release_Store(this);  // Any non-NULL value is ok
-  while (bg_compaction_scheduled_) {
-    bg_cv_.Wait();
+  bg_compaction_cv_.SignalAll();
+  bg_memtable_cv_.SignalAll();
+
+  while (num_bg_threads_ > 0) {
+    bg_fg_cv_.Wait();
   }
+  // while (bg_compaction_scheduled_) {
+  //   bg_cv_.Wait();
+  // }
   mutex_.Unlock();
 
   if (db_lock_ != NULL) {
@@ -213,7 +219,7 @@ Status DBImpl::NewDB() {
   new_db.SetLastSequence(0);
 
   const std::string manifest = DescriptorFileName(dbname_, 1);
-	 printf("db_impl, NewDB, manifest=%s\n",manifest.c_str());
+	printf("db_impl, NewDB, manifest=%s\n",manifest.c_str());
   WritableFile* file;
   Status s = env_->NewWritableFile(manifest, &file);
   if (!s.ok()) {
@@ -584,13 +590,10 @@ void DBImpl::CompactMemTable() {
 	  //return;
 	  Status s = WriteLevel0Table(imm_, &edit, base);
 	  
-	  
-	  // return ;
-	 
 	  base->Unref();
 
 	  if (s.ok() && shutting_down_.Acquire_Load()) {
-		s = Status::IOError("Deleting DB during memtable compaction");
+		  s = Status::IOError("Deleting DB during memtable compaction");
 	  }
 
 	  // Replace immutable memtable with the generated Table
@@ -809,7 +812,6 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   }
   return s;
 }
-
 
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
@@ -1101,42 +1103,40 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
  
  }
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
-		printf("dbimpl.cc, DoCompactionWork, begin\n");
-	//exit(9);	
-	  const uint64_t start_micros = env_->NowMicros();//
-	  int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
-		 Status status;
+  printf("dbimpl.cc, DoCompactionWork, begin\n");
+  //exit(9);	
+  const uint64_t start_micros = env_->NowMicros();//
+  int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
+    Status status;
 
-	  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);//assuring there exist logical files in the level
-	  assert(compact->builder == NULL);//TableBuilder* builder;
-	  assert(compact->outfile == NULL);//WritableFile* outfile;
-	  if (snapshots_.empty()) {
-		compact->smallest_snapshot = versions_->LastSequence();
-	  } else {
-		compact->smallest_snapshot = snapshots_.oldest()->number_;
-	  }
-	  // Release mutex while we're actually doing the compaction work
+  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);//assuring there exist logical files in the level
+  assert(compact->builder == NULL);//TableBuilder* builder;
+  assert(compact->outfile == NULL);//WritableFile* outfile;
+  if (snapshots_.empty()) {
+    compact->smallest_snapshot = versions_->LastSequence();
+  } else {
+    compact->smallest_snapshot = snapshots_.oldest()->number_;
+  }
+  // Release mutex while we're actually doing the compaction work
 
-	  mutex_.Unlock();
-		//***********************compact begin		
-			//compact->compaction->DoGroup();//now we can use compact->compaction->groups
-			compact->output_logical_file.number = versions_->NewFileNumber();
+  mutex_.Unlock();
+  //***********************compact begin		
+  //compact->compaction->DoGroup();//now we can use compact->compaction->groups
+  compact->output_logical_file.number = versions_->NewFileNumber();
 
-			//int groups_size= compact->compaction->groups.size();
-			//printf("DoCompactionWork, groups size=%d\n",groups_size);//always 1 for random workload
-			//for(int i=0;i<groups_size;i++){//for each group in groups
-										
-				// Group_merge(i, compact);	
-			
-			// }
-			
-			Conca_merge(compact);
-		mutex_.Lock();
-			InstallCompactionResults(compact);//store the edit to manifest.
-		//***********************compact end
-	 		//printf("dbimpl.cc, DoCompactionWork, end\n");
-			//exit(9);
-	   return status;
+  //int groups_size= compact->compaction->groups.size();
+  //printf("DoCompactionWork, groups size=%d\n",groups_size);//always 1 for random workload
+  //for(int i=0;i<groups_size;i++){//for each group in groups
+    // Group_merge(i, compact);	
+  // }
+    
+  Conca_merge(compact);
+  mutex_.Lock();
+  InstallCompactionResults(compact);//store the edit to manifest.
+  //***********************compact end
+  //printf("dbimpl.cc, DoCompactionWork, end\n");
+  //exit(9);
+  return status;
 }
 
 namespace {
@@ -1356,138 +1356,205 @@ int  DBImpl::getLevel(){
 	*arg=this;
 }
 
-
-void  DBImpl::Compact_thread_create(int thread_num){
-
-	pthread_create(&pth_compact_mem, NULL,  &DBImpl::CompactMemTableWrapper, this);
-	
-	for(int i=0;i<thread_num;i++){
-		pthread_create(&pth_compact[i], NULL,  &DBImpl::CompactLevelWrapper, this);
-	}
-}
-
 int gt=0;
 
+void DBImpl::CompactMemTableThread() {
+  MutexLock l(&mutex_);
 
-void DBImpl::Compact_mem_back() {
-	int thread_id=-1;
-	printf("dbimpl, Compact_mem_back, I am compactor thread, id=%d\n", thread_id);
-	while(true) {
-			//printf("I am compactor thread, begin while\n");
+  while (!shutting_down_.Acquire_Load() && !allow_background_activity_) {
+    bg_memtable_cv_.Wait();
+  }
+  while (!shutting_down_.Acquire_Load()) {
+    while (!shutting_down_.Acquire_Load() && imm_ == NULL) {
+      bg_memtable_cv_.Wait();
+    }
+    if (shutting_down_.Acquire_Load()) {
+      break;
+    }
 
-		mutex_.Lock();
-			while(imm_==NULL){
-				cv_for_wait_mem.Wait();
-				
-			}
-		//versions_->current_->files_;	
-		//printf("before compact mem ,lev0 size=%d-------------------\n", versions_->current_->files_[0].size());
-			CompactMemTable();
-			bg_cv_.SignalAll();
-			//usleep(1000000);
-		//printf("after compact mem ,lev0 size=%d++++++++++++++++++++++\n", versions_->current_->files_[0].size());
-	
-			//bg_cv_.SignalAll();
-			//MaybeScheduleCompaction();
-			cv_for_levels.SignalAll();//whip the background compactions.
-			// for(int level=0;level<max_level;level++){//max_level
-				// if(versions_->Need_compact(level) ==1 ){
-					// //printf("I am Compact_mem_back, i signal the cv_for_levels\n");
-					// cv_for_levels.SignalAll();
-					// break;
-				// }				
-			// }
-						
-			//printf("dbimpl, Compact_mem_back, finish,imm_=%p\n",imm_);
-		mutex_.Unlock();	
-			
-	}
-	
+    VersionEdit edit;
+    Version* base = versions_->current();
+    base->Ref();
+    Status s = WriteLevel0Table(imm_, &edit, base);
+    base->Unref(); base = NULL;
 
+    if (s.ok() && shutting_down_.Acquire_Load()) {
+      s = Status::IOError("Deleting DB during memtable compaction");
+    }
+
+    // Replace immutable memtable with the generated Table
+    if (s.ok()) {
+      edit.SetPrevLogNumber(0);
+      edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
+      s = versions_->LogAndApply(&edit, &mutex_);
+    }
+
+    if (s.ok()) {
+      // Commit to the new state
+      imm_->Unref();
+      imm_ = NULL;
+      has_imm_.Release_Store(NULL);
+      bg_fg_cv_.SignalAll();
+      bg_compaction_cv_.Signal();
+      DeleteObsoleteFiles();
+    } else {
+      RecordBackgroundError(s);
+      continue;
+    }
+
+    if (!shutting_down_.Acquire_Load() && !s.ok()) {
+      // Wait a little bit before retrying background compaction in
+      // case this is an environmental problem and we do not want to
+      // chew up resources for failed compactions for the duration of
+      // the problem.
+      bg_fg_cv_.SignalAll();  // In case a waiter can proceed despite the error
+      Log(options_.info_log, "Waiting after memtable compaction error: %s",
+          s.ToString().c_str());
+      mutex_.Unlock();
+      env_->SleepForMicroseconds(1000000);
+      mutex_.Lock();
+    }
+  }
+
+  Log(options_.info_log, "cleaning up CompactMemTableThread");
+  num_bg_threads_ -= 1;
+  bg_fg_cv_.SignalAll();
 }
 
-void DBImpl::Compact_back() {
-	int thread_id;
-	mutex_for_all.Lock();
-		thread_id=compactor_id;
-		compactor_id++;
-	mutex_for_all.Unlock();
-	
-	printf("dbimpl, Compact_back, I am compactor thread, thread_id=%d\n", thread_id);
-	
-	// if(thread_id>0){
-		// //fflush(stdout); 
-		// //exit(9);
-		// sleep(999);
+Status DBImpl::BackgroundCompaction(int level) {
+  mutex_.AssertHeld();
+  Compaction* c = NULL;
+  
+  // TODO manual
+  bool is_manual = (manual_compaction_ != NULL);
+  if (is_manual) {
 
-	// }
+  } else {
+    // TODO level
+    //unsigned level = versions_->PickCompactionLevel(levels_locked_, straight_reads_ > kStraightReads);
+    //  
+    c = versions_->PickLogicalFiles(level);
+    if (c) {
+      levels_locked_[c->level()] = true;
+    }
+  }
 
-	//printf("dbimpl, Compact_back, I am compactor thread, after sleep, thread_id=%d\n", thread_id);
-	//exit(9);
-	while(true) {
-			mutex_.Lock();
-			while( versions_->Need_compact(thread_id)==0) {
-				cv_for_levels.Wait();
-			}
-			//mutex_.Unlock();
-      //mutex_for_all.Lock();//single thread
-      //mutex_.Lock();
-			printf("dbimpl, Compact_back, level %d begin\n", thread_id);
-			Compact_level(thread_id);//mutex_ is unlocked in the DoCompaction so other threads can also enter the DoCompaction.
-			//printf("dbimpl, Compact_back, level %d end\n", thread_id);
-      mutex_.Unlock();
-      //mutex_for_all.Unlock();
+  Status status;
+
+	if (c == NULL) {
+		// Nothing to do
+	} else {
+    CompactionState* compact = new CompactionState(c);//CompactionState contains the output structure
+    //printf("dbimpl.cc, Compact_level, before DoCompactionWork\n");	
+    status = DoCompactionWork(compact);
+    if (!status.ok()) {
+      printf("Compact_level, status is not ok, RecordBackgroundError,exit\n");
+      RecordBackgroundError(status);
+    }
+
+    CleanupCompaction(compact);
+    c->ReleaseInputs();
+    DeleteObsoleteFiles();
 	}
+
+  if (c) {
+    delete c;
+    levels_locked_[c->level()] = false;
+  }
+
+  if (status.ok()) {
+    // Done
+  } else if (shutting_down_.Acquire_Load()) {
+    // Ignore compaction errors found during shutting down
+  } else {
+    Log(options_.info_log,
+        "Compaction error: %s", status.ToString().c_str());
+  }
+
+  return status;
+}
+
+void DBImpl::CompactLevelThread() {
+  MutexLock l(&mutex_);
+  int level;
+  while (!shutting_down_.Acquire_Load() && !allow_background_activity_) {
+    bg_compaction_cv_.Wait();
+  }
+  while (!shutting_down_.Acquire_Load()) {
+    while (!shutting_down_.Acquire_Load() && !versions_->NeedsCompaction(levels_locked_, level)) {
+      bg_compaction_cv_.Wait();
+    }
+    if (shutting_down_.Acquire_Load()) {
+      break;
+    }
+    printf("Compact level thread before background\n");
+    Status s = BackgroundCompaction(level);
+    bg_fg_cv_.SignalAll(); // before the backoff In case a waiter
+                           // can proceed despite the error
+    if (s.ok()) {
+      // Success
+    } else if (shutting_down_.Acquire_Load()) {
+      // Error most likely due to shutdown; do not wait
+    } else {
+      // Wait a little bit before retrying background compaction in
+      // case this is an environmental problem and we do not want to
+      // chew up resources for failed compactions for the duration of
+      // the problem.
+      Log(options_.info_log, "Waiting after background compaction error: %s",
+          s.ToString().c_str());
+      mutex_.Unlock();
+      int seconds_to_sleep = 1;
+      env_->SleepForMicroseconds(seconds_to_sleep * 1000000);
+      mutex_.Lock();
+    }
+  }
+
+  Log(options_.info_log, "cleaning up CompactLevelThread");
+  num_bg_threads_ -= 1;
+  bg_fg_cv_.SignalAll();
 }
 
 void DBImpl::Compact_level(int level){
-	
-	 Compaction* c;
-	
-	  c = versions_->PickLogicalFiles(level);
-	  
-	  bool is_manual = (manual_compaction_ != NULL);
-	  Status status;
+	Compaction* c;
+  c = versions_->PickLogicalFiles(level);
+  
+  bool is_manual = (manual_compaction_ != NULL);
+  Status status;
 	if (c == NULL) {
 		// Nothing to do
-	}
-	else {
-			CompactionState* compact = new CompactionState(c);//CompactionState contains the output structure
-			//printf("dbimpl.cc, Compact_level, before DoCompactionWork\n");	
-			status = DoCompactionWork(compact);
-			if (!status.ok()) {
-				printf("Compact_level, status is not ok, RecordBackgroundError,exit\n");
-			  RecordBackgroundError(status);
-			}
-			//printf("dbimpl.cc, Compact_level, before CleanupCompaction\n");	
+	} else {
+    CompactionState* compact = new CompactionState(c);//CompactionState contains the output structure
+    //printf("dbimpl.cc, Compact_level, before DoCompactionWork\n");	
+    status = DoCompactionWork(compact);
+    if (!status.ok()) {
+      printf("Compact_level, status is not ok, RecordBackgroundError,exit\n");
+      RecordBackgroundError(status);
+    }
+    //printf("dbimpl.cc, Compact_level, before CleanupCompaction\n");	
 
-			CleanupCompaction(compact);
-			c->ReleaseInputs();
-			DeleteObsoleteFiles();
-			//sleep(999);
-
+    CleanupCompaction(compact);
+    c->ReleaseInputs();
+    DeleteObsoleteFiles();
+    //sleep(999);
 	}
 	delete c;
-	
 }
-
-
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
   //printf("I am write, has_created=%d\n",has_created);
   //printf("dbimp,write begin\n");
-  if(!has_created) {
-    for(int i=0;i<max_level;i++){
-      //pthread_mutex_init(&mu_for_wait[i],NULL);
-      //pthread_cond_init(&cv_for_wait[i], NULL);
-    }
+  // if(!has_created) {
+  //   for(int i=0;i<max_level;i++){
+  //     //pthread_mutex_init(&mu_for_wait[i],NULL);
+  //     //pthread_cond_init(&cv_for_wait[i], NULL);
+  //   }
     
-    compactor_id=0;
-    Compact_thread_create(max_level);//this create number of threas for disk level, and additional thread for memory
-    //printf("dbimpl, Write, after Compact_thread_create, sleep\n");
-    //sleep(999);
-    has_created=1;
-  }
+  //   compactor_id=0;
+  //   Compact_thread_create(max_level);//this create number of threas for disk level, and additional thread for memory
+  //   //printf("dbimpl, Write, after Compact_thread_create, sleep\n");
+  //   //sleep(999);
+  //   has_created=1;
+  // }
 
 //exit(9);
   Writer w(&mutex_);
@@ -1620,91 +1687,92 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
 // REQUIRES: this thread is currently at the front of the writer queue
 
 Status DBImpl::MakeRoomForWrite(bool force) {
-		//printf("dbimpl,MakeRoomForWrite\n");
-		  mutex_.AssertHeld();
-		  assert(!writers_.empty());
-		  bool allow_delay = !force;
-		  Status s;
-		  while (true) {
-			if (!bg_error_.ok()) {
-			  // Yield previous error
-			  s = bg_error_;
-			  fprintf(stderr,"dbimpl,make error, 99999999999999999999999\n");
-			  break;
-			} else if (
-				allow_delay &&
-				versions_->NumLevelFiles(0) >=  growth_factor *2) {
-			  // We are getting close to hitting a hard limit on the number of
-			  // L0 files.  Rather than delaying a single write by several
-			  // seconds when we hit the hard limit, start delaying each
-			  // individual write by 1ms to reduce latency variance.  Also,
-			  // this delay hands over some CPU to the compaction thread in
-			  // case it is sharing the same core as the writer.
-				cv_for_levels.SignalAll();//whip the background compaction to work
-
-
-			  mutex_.Unlock();
-			  env_->SleepForMicroseconds(1000);
-			  allow_delay = false;  // Do not delay a single write more than once
-			  //printf("make room, delayed\n");
-			  mutex_.Lock();
-			} else if (!force &&
-					   (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
-			  // There is room in current memtable
-			    //printf("dbimpl,go on, 99999999999999999999999\n");
-			  break;
-			} else if (imm_ != NULL) {
-			  // We have filled up the current memtable, but the previous
-			  // one is still being compacted, so we wait.
-			  Log(options_.info_log, "Current memtable full; waiting...\n");
-			 //printf("make room, imm is not null, wait\n"); 
-				cv_for_levels.SignalAll();//whip the background compaction to work
-			  
-			  //cv_for_wait_mem.Signal();
-			  bg_cv_.Wait();//maybe both here and comp_mem is waiting. He thinks imm_ is null but here thinks imm_ is not null
-			  //printf("make room, imm is not null,after  wait\n");
-			} else if (versions_->NumLevelFiles(0) >= growth_factor *4) {
-			  // There are too many level-0 files.
-			  Log(options_.info_log, "Too many L0 files; waiting...\n");
-			  //printf("make room, too many lev 0, wait\n");
-			  cv_for_levels.SignalAll();//whip the background compaction to work
-
-			  bg_cv_.Wait();
-			  
-			} else {
-			  // Attempt to switch to a new memtable and trigger compaction of old
-			    //printf("dbimpl,make room, comp, 777777777777777777\n");
-			  assert(versions_->PrevLogNumber() == 0);
-			  uint64_t new_log_number = versions_->NewFileNumber();
-			  WritableFile* lfile = NULL;
-			  s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
-			  if (!s.ok()) {
-				// Avoid chewing through file number space in a tight loop.
-				versions_->ReuseFileNumber(new_log_number);
-				break;
-			  }
-			  delete log_;
-			  delete logfile_;
-			  logfile_ = lfile;
-			  logfile_number_ = new_log_number;
-			  log_ = new log::Writer(lfile);
-			  imm_ = mem_;
-			  has_imm_.Release_Store(imm_);
-			  mem_ = new MemTable(internal_comparator_);
-			  mem_->Ref();
-			  force = false;   // Do not force another compaction if have room
-			  //MaybeScheduleCompaction();
-			  //signal the memory compact thread
-			  //printf("make room after signal,before signal aaaaaaaaaaaaaaa\n");
-			  cv_for_wait_mem.Signal();
-			  //sleep(1);
-			  //imm_=NULL;
-			  //CompactMemTable();
-			  //printf("make room after signal bbbbbbbbbbbbbb\n");
-			  gt=1;
-			}
-		  }
-		  return s;
+	//printf("dbimpl,MakeRoomForWrite\n");
+  mutex_.AssertHeld();
+  assert(!writers_.empty());
+  bool allow_delay = !force;
+  Status s;
+  while (true) {
+    if (!bg_error_.ok()) {
+      // Yield previous error
+      s = bg_error_;
+      fprintf(stderr,"dbimpl,make error, 99999999999999999999999\n");
+      break;
+    } else if (allow_delay &&
+              (versions_->NumLevelFiles(0) >=  growth_factor *2)) {
+      // We are getting close to hitting a hard limit on the number of
+      // L0 files.  Rather than delaying a single write by several
+      // seconds when we hit the hard limit, start delaying each
+      // individual write by 1ms to reduce latency variance.  Also,
+      // this delay hands over some CPU to the compaction thread in
+      // case it is sharing the same core as the writer.
+      //bg_compaction_cv_.
+      //cv_for_levels.SignalAll();//whip the background compaction to work
+      mutex_.Unlock();
+      env_->SleepForMicroseconds(1000);
+      allow_delay = false;  // Do not delay a single write more than once
+      //printf("make room, delayed\n");
+      mutex_.Lock();
+    } else if (!force &&
+            (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
+      // There is room in current memtable
+        //printf("dbimpl,go on, 99999999999999999999999\n");
+      break;
+    } else if (imm_ != NULL) {
+      // We have filled up the current memtable, but the previous
+      // one is still being compacted, so we wait.
+      Log(options_.info_log, "Current memtable full; waiting...\n");
+      //printf("make room, imm is not null, wait\n"); 
+      bg_memtable_cv_.Signal();
+      bg_fg_cv_.Wait();
+      //cv_for_levels.SignalAll();//whip the background compaction to work
+      
+      //cv_for_wait_mem.Signal();
+      //bg_cv_.Wait();//maybe both here and comp_mem is waiting. He thinks imm_ is null but here thinks imm_ is not null
+      //printf("make room, imm is not null,after  wait\n");
+    } else if (versions_->NumLevelFiles(0) >= growth_factor *4) {
+      // There are too many level-0 files.
+      Log(options_.info_log, "Too many L0 files; waiting...\n");
+      //printf("make room, too many lev 0, wait\n");
+      //cv_for_levels.SignalAll();//whip the background compaction to work
+      //bg_cv_.Wait();
+      bg_compaction_cv_.Signal();
+      bg_fg_cv_.Wait();
+    } else {
+      // Attempt to switch to a new memtable and trigger compaction of old
+      //printf("dbimpl,make room, comp, 777777777777777777\n");
+      assert(versions_->PrevLogNumber() == 0);
+      uint64_t new_log_number = versions_->NewFileNumber();
+      WritableFile* lfile = NULL;
+      s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
+      if (!s.ok()) {
+        // Avoid chewing through file number space in a tight loop.
+        versions_->ReuseFileNumber(new_log_number);
+        break;
+      }
+      delete log_;
+      delete logfile_;
+      logfile_ = lfile;
+      logfile_number_ = new_log_number;
+      log_ = new log::Writer(lfile);
+      imm_ = mem_;
+      has_imm_.Release_Store(imm_);
+      mem_ = new MemTable(internal_comparator_);
+      mem_->Ref();
+      force = false;   // Do not force another compaction if have room
+      //MaybeScheduleCompaction();
+      //signal the memory compact thread
+      //printf("make room after signal,before signal aaaaaaaaaaaaaaa\n");
+      //cv_for_wait_mem.Signal();
+      //sleep(1);
+      //imm_=NULL;
+      //CompactMemTable();
+      //printf("make room after signal bbbbbbbbbbbbbb\n");
+      gt = 1;
+      break;
+    }
+  }
+  return s;
 }
 
 bool DBImpl::GetProperty(const Slice& property, std::string* value) {
@@ -1805,8 +1873,6 @@ DB::~DB() { }
 
 Status DB::Open(const Options& options, const std::string& dbname,
                 DB** dbptr) {
-				
-	
   *dbptr = NULL;
 
   DBImpl* impl = new DBImpl(options, dbname);
@@ -1829,17 +1895,20 @@ Status DB::Open(const Options& options, const std::string& dbname,
       impl->logfile_ = lfile;
       impl->logfile_number_ = new_log_number;
       impl->log_ = new log::Writer(lfile);
-	  
       s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
-	  printf("dbimpl, open, after LogAndApply\n");
-	  //exit(9);
+      printf("dbimpl, open, after LogAndApply\n");
+      //exit(9);
     }
     if (s.ok()) {
-		printf("impl, open, before DeleteObsoleteFiles\n");
+		  printf("impl, open, before DeleteObsoleteFiles\n");
       impl->DeleteObsoleteFiles();
       //impl->MaybeScheduleCompaction();
     }
   }
+  impl->pending_outputs_.clear();
+  impl->allow_background_activity_ = true;
+  impl->bg_compaction_cv_.SignalAll();
+  impl->bg_memtable_cv_.SignalAll();
   impl->mutex_.Unlock();
   if (s.ok()) {
 		printf("impl, open, before Generate_file_level_bloom_filter\n");

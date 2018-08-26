@@ -244,7 +244,7 @@ static const char* FLAGS_db = NULL;
 static const char* FLAGS_ycsb_path = NULL;
 
 // stats logging every 1000000 ops 
-static int FLAGS_stats_interval = 1000000;
+static int FLAGS_stats_interval = 10000;
 
 namespace leveldb {
 
@@ -598,9 +598,9 @@ class Benchmark {
 
   void Run() {
     PrintHeader();
-	  //printf(" I amd db_bench.cc , Run, after PrintHeader \n");
+	  printf(" I amd db_bench.cc , Run, after PrintHeader \n");
     Open();
-    //printf(" I amd db_bench.cc , Run, after Open \n");
+    printf(" I amd db_bench.cc , Run, after Open \n");
 	  //exit(1);//test if log is deleted  --no
     const char* benchmarks = FLAGS_benchmarks;
 	  //printf(" I amd db_bench.cc , Run, `00000\n");
@@ -616,7 +616,7 @@ class Benchmark {
         name = Slice(benchmarks, sep - benchmarks);
         benchmarks = sep + 1;
       }
-//printf(" I amd db_bench.cc , Run, `1111111111\n");
+      //printf(" I amd db_bench.cc , Run, `1111111111\n");
       // Reset parameters that may be overridden below
       num_ = FLAGS_num;
       reads_ = (FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads);
@@ -627,7 +627,7 @@ class Benchmark {
       void (Benchmark::*method)(ThreadState*) = NULL;
       bool fresh_db = false;
       int num_threads = FLAGS_threads;
- //printf(" _____________I amd db_bench.cc , Run, before if \n");
+      //printf(" _____________I amd db_bench.cc , Run, before if \n");
       if (name == Slice("open")) {
         method = &Benchmark::OpenBench;
         num_ /= 10000; 
@@ -649,11 +649,7 @@ class Benchmark {
         fresh_db = true;
         method = &Benchmark::LoadYCSBSorted;
       } else if (name == Slice("a")||name == Slice("b")||name == Slice("c") ||
-						name == Slice("d")||name == Slice("e")||name == Slice("f")||name == Slice("runycsb")
-				)	  
-	  {
-       
-		
+						name == Slice("d")||name == Slice("e")||name == Slice("f")||name == Slice("runycsb")) {
         method = &Benchmark::RunYCSB;
       } else if (name == Slice("overwrite")) {
         fresh_db = false;
@@ -739,7 +735,7 @@ class Benchmark {
       }
  //printf(" _____________I amd db_bench.cc , Run, before method \n");
       if (method != NULL) {
-		    //printf(" _____________I amd db_bench.cc , Run, before RunBenchmark \n");
+		    printf(" _____________I amd db_bench.cc , Run, before RunBenchmark \n");
 			//exit(1);//test if log is deleted  --yes
         RunBenchmark(num_threads, name, method);
       }
@@ -1262,8 +1258,6 @@ void RunYCSB(ThreadState* thread) {
 		printf("\n\n\n\n\n\n\n");
 
 		FILE *file=fopen("runycsb.txt","w+");
-
-
 		clock_gettime(CLOCK_MONOTONIC,&begin);
 
 		double total_us=0;	
@@ -1281,8 +1275,6 @@ void RunYCSB(ThreadState* thread) {
 			char key[100];
 			fscanf(workload," %s\n", key);
 			//printf("command:%c|key:%s|\n",command,key);
-			
-			
 //---------	read begin--------------------------------------------------------------------------	
 			if(command=='r'){
 				find_times++;
@@ -1294,9 +1286,6 @@ void RunYCSB(ThreadState* thread) {
 				 else{
 					  //printf("I am db_bench.cc, ReadRandom, not found,key=%s \n ", key);
 				}
-			
-				
-				
 			}
 //---------	read end--------------------------------------------------------------------------	
 //--------- insert begin--------------------------------------------------------------------------
@@ -1315,10 +1304,7 @@ void RunYCSB(ThreadState* thread) {
 				
 				int amount;
 				amount=scan_amount;;//rand()%100;
-
 				//printf("scan, %d numbers\n",amount);
-				
-
 				scan_times++;
 			
 				void *buf;
@@ -1362,11 +1348,10 @@ void RunYCSB(ThreadState* thread) {
 			  }		
 				
 			if(request==num_){
-					
-					// printf("key=%s, durations[50]=%f\n", durations[50],key);
-						// printf("key=%s, durations[51]=%f\n", durations[51],key);//block.cc Seek()
-						// printf("key=%s, durations[52]=%f\n", durations[52],key);//block.cc  Decode
-					 break;
+        // printf("key=%s, durations[50]=%f\n", durations[50],key);
+        // printf("key=%s, durations[51]=%f\n", durations[51],key);//block.cc Seek()
+        // printf("key=%s, durations[52]=%f\n", durations[52],key);//block.cc  Decode
+        break;
 			}
 			
 		}
@@ -1391,7 +1376,7 @@ void print_write_tail(){
 }
 
   void DoWrite(ThreadState* thread, bool seq) {
-	  // printf("I amd db_bench.cc, DoWrite,begin\n");
+	  printf("I amd db_bench.cc, DoWrite,begin\n");
 	  //exit(1);//test if log is deleted  --yes
     if (num_ != FLAGS_num) {
       char msg[100];
@@ -1435,7 +1420,9 @@ void print_write_tail(){
         // int *num_in_levels=(int*)arg;
         // int sequence=0;
         
-        for(int i = 0; i <= getLevel(); i++) {					
+        for(int i = 0; i <= getLevel(); i++) {	
+          printf("level %d\n", i);
+          fprintf(stats_log_, "level %d\n", i);			
           int logical_num = get_dbimpl()->versions_->current_->logical_files_[i].size();						
           printf("%d{",logical_num);
           fprintf(stats_log_, "%d{",logical_num);
@@ -1445,8 +1432,8 @@ void print_write_tail(){
             fprintf(stats_log_,"%d,",  get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
           }
         
-          printf("}");
-          fprintf(stats_log_,"}");
+          printf("}\n");
+          fprintf(stats_log_,"}\n");
         }
         
         printf("]\n");
@@ -1643,13 +1630,9 @@ void ReadRandom(ThreadState* thread) {
 			double duration=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
 			if(i%10000==0){//print in the screen, should be less frequent.
 					//printf("front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
-					
-							
 			// fprintf(recorder,"front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
 			// fflush(recorder);
 			}
-			
-			
 	  }
       //thread->stats.FinishedSingleOp();
     }

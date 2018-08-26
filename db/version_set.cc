@@ -2208,49 +2208,80 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
 
 //COMP_THRESH
 int VersionSet::Need_compact(int level) {
-		if(current_->logical_files_[level].size() < growth_factor){//the level need no compaction
-			return 0;
-		}
-		else if(current_->logical_files_[level+1].size() >= growth_factor*1.5){//the next level has no space
-			return 0;
-		}
-		else {
-			return 1;
-		}
+  if(current_->logical_files_[level].size() < growth_factor) {
+    //the level need no compaction
+    return 0;
+  } else if(current_->logical_files_[level+1].size() >= growth_factor*1.5) {//the next level has no space
+    return 0;
+  } else {
+    return 1;
+  }
 }
+
+bool VersionSet::NeedsCompaction(bool* locked, int& level) {
+  for (int i = 1; i < config::kNumLevels; ++i) {
+    if (locked[i]) {
+      continue;
+    }
+    if (current_->logical_files_[i].size() > growth_factor && 
+        current_->logical_files_[i + 1].size() <= growth_factor*1.5) {
+      printf("NeedsCompaction: %d\n", i);
+      level = i;
+      return true;
+    }
+    // if(current_->logical_files_[i].size() < growth_factor) {
+    //   //the level need no compaction
+    //   return false;
+    // // TODO : i+1 overflow 
+    // } else if(current_->logical_files_[i + 1].size() >= growth_factor*1.5) {
+    //   //the next level has no space
+    //   return false;
+    // } else {
+    //   printf("NeedsCompaction: %d\n", i);
+    //   level = i;
+    //   return true;
+    // }
+  }
+
+  if (current_->logical_files_[0].size() > growth_factor) {
+    level = 0;
+    printf("NeedsCompaction: 0\n");
+    return true;
+  }
+  return false;
+}
+
 Compaction* VersionSet::PickLogicalFiles(int level) {
 		
-	Compaction* c;		
-	const bool size_compaction = Need_compact(level);
+	Compaction* c = NULL;		
+	//bool need_compaction = NeedsCompaction(level);
 	   
-	if (size_compaction) {			
-			assert(level >= 0);//mei
-			assert(level+1 < config::kNumLevels);
-			c = new Compaction(level);
+	//if (need_compaction) {			
+  assert(level >= 0);//mei
+  assert(level+1 < config::kNumLevels);
+  c = new Compaction(level);
 
-			//我们可能想先选择较老的10个文件
-			//int roof=current_->files_[level].size()-1;
-			//int floor=current_->files_[level].size()-COMP_THRESH;
-			 //printf("versionset,pickcomp, 66666666666, roof=%d, floor=%d\n",roof,floor);
-			//for (int i = roof; i >=floor; i--) {//current_->files_[level].size() //pick to compact
-			for(int i=0;i<growth_factor;i++){
-				assert( current_->files_[level].size()>=growth_factor );			
-				 //printf("versionset,pickcomp, 77777777777\n");
-				LogicalMetaData* f = current_->logical_files_[level][i];
-				//printf("versionset,pickcomp, i=%d, file=%d\n",i,f->number);
-				c->logical_files_inputs_.push_back(f);//mei, push multi files 
-			  
-			}
-			if (c->logical_files_inputs_.empty()) {//exception
-			  // Wrap-around to the beginning of the key space
-			  printf("versionset, pick, wrap back\n");
-			  exit(1);
-			  //c->logical_files_inputs_[0].push_back(current_->files_[level][0]);
-			}
-	} 
-	else{
-		return NULL;
-	}
+  //我们可能想先选择较老的10个文件
+  //int roof=current_->files_[level].size()-1;
+  //int floor=current_->files_[level].size()-COMP_THRESH;
+    //printf("versionset,pickcomp, 66666666666, roof=%d, floor=%d\n",roof,floor);
+  //for (int i = roof; i >=floor; i--) {//current_->files_[level].size() //pick to compact
+  for(int i = 0; i < growth_factor; i++) {
+    //assert( current_->files_[level].size()>=growth_factor );			
+    //printf("versionset,pickcomp, 77777777777\n");
+    LogicalMetaData* f = current_->logical_files_[level][i];
+    //printf("versionset,pickcomp, i=%d, file=%d\n",i,f->number);
+    c->logical_files_inputs_.push_back(f);//mei, push multi files 
+  }
+  if (c->logical_files_inputs_.empty()) {//exception
+    // Wrap-around to the beginning of the key space
+    printf("versionset, pick, wrap back\n");
+    exit(1);
+    //c->logical_files_inputs_[0].push_back(current_->files_[level][0]);
+  }
+	// } else {
+	// 	return NULL;
+	// }
 	
 	c->input_version_ = current_;
 	c->input_version_->Ref();
