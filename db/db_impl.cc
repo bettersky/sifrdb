@@ -319,7 +319,6 @@ void DBImpl::DeleteObsoleteFiles() {
 Status DBImpl::Recover(VersionEdit* edit) {
   mutex_.AssertHeld();
 
-	printf("dbimpl, recover, begin\n");
   // Ignore error from CreateDir since the creation of the DB is
   // committed only when the descriptor is created, and this directory
   // may already exist from a previous failed creation attempt.
@@ -361,12 +360,10 @@ Status DBImpl::Recover(VersionEdit* edit) {
     const uint64_t prev_log = versions_->PrevLogNumber();
     std::vector<std::string> filenames;
     s = env_->GetChildren(dbname_, &filenames);
-	printf("dbimpl, Recover, 0000000000, end,s.ok()=%d\n", s.ok());
     if (!s.ok()) {
       return s;
     }
     std::set<uint64_t> expected;
-printf("dbimpl, Recover, before AddLiveFiles\n");
     versions_->AddLiveFiles(&expected);
     uint64_t number;
     FileType type;
@@ -386,7 +383,6 @@ printf("dbimpl, Recover, before AddLiveFiles\n");
     }
 
     // Recover in the order in which the logs were generated
-	fprintf(stderr,"dbimpl,Recover, begin to recovery log file, but we now skip the operation\n");
     std::sort(logs.begin(), logs.end());
     for (size_t i = 0; i < logs.size(); i++) {
       //s = RecoverLogFile(logs[i], edit, &max_sequence); //avoid to recover the log to a small ldb
@@ -403,7 +399,6 @@ printf("dbimpl, Recover, before AddLiveFiles\n");
       }
     }
   }
-	printf("dbimpl, recover, end,s.ok()=%d\n", s.ok());
   return s;
 }
 
@@ -769,8 +764,6 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 	//printf("dbimpl.cc, Group_merge, begin\n");
 
 	//printf("group size=%d\n", group.size());
-
-	
 	if(group.size()<1){
 		printf("dbimpl, Group_merge, error,exit\n");
 		exit(9);
@@ -798,78 +791,78 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 // exit(9);
 	int counter=0;
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
-			counter++;
-				Slice key = input->key();
+		counter++;
+    Slice key = input->key();
 
-				// Handle key/value, add to state, etc.
-				bool drop = false;
-				if (!ParseInternalKey(key, &ikey)) {//assign the input key to ikey
-				  // Do not hide error keys
-				  current_user_key.clear();
-				  has_current_user_key = false;
-				  last_sequence_for_key = kMaxSequenceNumber;
-				} else {
-				  if (!has_current_user_key ||
-					  user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
-					// First occurrence of this user key
-					current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
-					has_current_user_key = true;
-					last_sequence_for_key = kMaxSequenceNumber;
-				  }
+    // Handle key/value, add to state, etc.
+    bool drop = false;
+    if (!ParseInternalKey(key, &ikey)) {//assign the input key to ikey
+      // Do not hide error keys
+      current_user_key.clear();
+      has_current_user_key = false;
+      last_sequence_for_key = kMaxSequenceNumber;
+    } else {
+      if (!has_current_user_key ||
+        user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
+      // First occurrence of this user key
+      current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
+      has_current_user_key = true;
+      last_sequence_for_key = kMaxSequenceNumber;
+      }
 
-				  if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
-					// Hidden by an newer entry for same user key
-					drop = true;    // (A)
-				  } else if (ikey.type == kTypeDeletion &&
-							 ikey.sequence <= compact->smallest_snapshot &&
-							 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {//decide that there is no key entry in other levels needing to be supported by this deletion marker. That is, this level is the keys last level, or base level
-					// For this user key:
-					// (1) there is no data in higher levels
-					// (2) data in lower levels will have larger sequence numbers
-					// (3) data in layers that are being compacted here and have
-					//     smaller sequence numbers will be dropped in the next
-					//     few iterations of this loop (by rule (A) above).
-					// Therefore this deletion marker is obsolete and can be dropped.
-					drop = true;
-				  }
+      if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
+      // Hidden by an newer entry for same user key
+      drop = true;    // (A)
+      } else if (ikey.type == kTypeDeletion &&
+            ikey.sequence <= compact->smallest_snapshot &&
+            compact->compaction->IsBaseLevelForKey(ikey.user_key)) {//decide that there is no key entry in other levels needing to be supported by this deletion marker. That is, this level is the keys last level, or base level
+      // For this user key:
+      // (1) there is no data in higher levels
+      // (2) data in lower levels will have larger sequence numbers
+      // (3) data in layers that are being compacted here and have
+      //     smaller sequence numbers will be dropped in the next
+      //     few iterations of this loop (by rule (A) above).
+      // Therefore this deletion marker is obsolete and can be dropped.
+      drop = true;
+      }
 
-				  last_sequence_for_key = ikey.sequence;
-				}
+      last_sequence_for_key = ikey.sequence;
+    }
 
-				if (!drop) {
-				  // Open output file if necessary
-				  if (compact->builder == NULL) {
-					status = OpenCompactionOutputFile(compact);//open an physical file
-					if (!status.ok()) {
-					  break;
-					}
-				  }
-				  if (compact->builder->NumEntries() == 0) {
-					compact->current_output()->smallest.DecodeFrom(key);
-				  }
-				  compact->current_output()->largest.DecodeFrom(key);
-				  compact->builder->Add(key, input->value());
+    if (!drop) {
+      // Open output file if necessary
+      if (compact->builder == NULL) {
+      status = OpenCompactionOutputFile(compact);//open an physical file
+      if (!status.ok()) {
+        break;
+      }
+      }
+      if (compact->builder->NumEntries() == 0) {
+      compact->current_output()->smallest.DecodeFrom(key);
+      }
+      compact->current_output()->largest.DecodeFrom(key);
+      compact->builder->Add(key, input->value());
 
-					// Close output file if it is big enough
-					//printf("dbimpl, compact->compaction->MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-				  if (compact->builder->FileSize() >= compact->compaction->MaxOutputFileSize()) {
+      // Close output file if it is big enough
+      //printf("dbimpl, compact->compaction->MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
+      if (compact->builder->FileSize() >= compact->compaction->MaxOutputFileSize()) {
 
-					//printf("dbimpl, before FinishCompactionOutputFile,counter=%d\n",counter);
-					//printf("dbimpl, before FinishCompactionOutputFile,MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-					//exit(9);
-					
-					status = FinishCompactionOutputFile(compact, input);
-					if (!status.ok()) {
-					  break;
-					}
-				  }
+        //printf("dbimpl, before FinishCompactionOutputFile,counter=%d\n",counter);
+        //printf("dbimpl, before FinishCompactionOutputFile,MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
+        //exit(9);
+        
+        status = FinishCompactionOutputFile(compact, input);
+        if (!status.ok()) {
+          break;
+        }
+      }
 
-				}
+    }
 
-				input->Next();
+    input->Next();
 	}
 
-	if(status.ok() && compact->builder != NULL){
+	if(status.ok() && compact->builder != NULL) {
 		status =FinishCompactionOutputFile(compact, input);//store the last physicl file of this group
 	}
 	
@@ -911,109 +904,106 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 	fly[level]=0;
 	
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
-			counter++;
-			//printf("dbimpl.cc, input is valid----------------------------------\n");
-				if(input->isNewSST()){//determine if the current_ is a new sst.
-					//printf("dbimpl.cc, isNewSST is 1\n");
-				
-					if(input->isOverlapped()==0){//no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
-							printf("dbimpl.cc, isOverlapped is 0\n");
+    counter++;
+    //printf("dbimpl.cc, input is valid----------------------------------\n");
+    if(input->isNewSST()){//determine if the current_ is a new sst.
+      //printf("dbimpl.cc, isNewSST is 1\n");
+    
+      if(input->isOverlapped()==0){//no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
+        printf("dbimpl.cc, isOverlapped is 0\n");
 
-							const void *arg;//
-							input->get_sst_meta(&arg);
-							
-							PhysicalMetaData *phy_file= (PhysicalMetaData*)arg;
-							//printf("dbimpl.cc, tttt, file number=%d,size=%d, new logical number=%d\n", phy_file->number, phy_file->file_size,compact->output_logical_file.number);
-							//input->isNewSST();
-							FinishCompactionOutputFile(compact, input);
-							
-							//printf("dbimpl.cc, tttt, small=%s,size=%d,large=%s\n",phy_file->smallest.user_key().data(), phy_file->file_size,phy_file->largest.user_key().data());
-							compact->output_logical_file.AppendPhysicalFile(*phy_file);
-							
-							input->next_sst();
-							//printf("dbimpl.cc,Conca_merge,next_sst end\n");
-							//exit(9);
-							continue;
-							
+        const void *arg;//
+        input->get_sst_meta(&arg);
+        
+        PhysicalMetaData *phy_file= (PhysicalMetaData*)arg;
+        //printf("dbimpl.cc, tttt, file number=%d,size=%d, new logical number=%d\n", phy_file->number, phy_file->file_size,compact->output_logical_file.number);
+        //input->isNewSST();
+        FinishCompactionOutputFile(compact, input);
+        
+        //printf("dbimpl.cc, tttt, small=%s,size=%d,large=%s\n",phy_file->smallest.user_key().data(), phy_file->file_size,phy_file->largest.user_key().data());
+        compact->output_logical_file.AppendPhysicalFile(*phy_file);
+        
+        input->next_sst();
+        //printf("dbimpl.cc,Conca_merge,next_sst end\n");
+        //exit(9);
+        continue;
+      }
+    }
+    
+    //printf("dbimpl.cc,Conca_merge,exit\n");
+    //exit(9);
+    Slice key = input->key();
 
-					}
+    // Handle key/value, add to state, etc.
+    bool drop = false;
+    if (!ParseInternalKey(key, &ikey)) {//assign the input key to ikey
+      // Do not hide error keys
+      current_user_key.clear();
+      has_current_user_key = false;
+      last_sequence_for_key = kMaxSequenceNumber;
+    } else {
+      if (!has_current_user_key ||
+        user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
+      // First occurrence of this user key
+      current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
+      has_current_user_key = true;
+      last_sequence_for_key = kMaxSequenceNumber;
+      }
 
-				}
-				
-				//printf("dbimpl.cc,Conca_merge,exit\n");
-				//exit(9);
-				Slice key = input->key();
+      if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
+      // Hidden by an newer entry for same user key
+      drop = true;    // (A)
+      } else if (ikey.type == kTypeDeletion &&
+            ikey.sequence <= compact->smallest_snapshot &&
+            compact->compaction->IsBaseLevelForKey(ikey.user_key)) {//decide that there is no key entry in other levels needing to be supported by this deletion marker. That is, this level is the keys last level, or base level
+      // For this user key:
+      // (1) there is no data in higher levels
+      // (2) data in lower levels will have larger sequence numbers
+      // (3) data in layers that are being compacted here and have
+      //     smaller sequence numbers will be dropped in the next
+      //     few iterations of this loop (by rule (A) above).
+      // Therefore this deletion marker is obsolete and can be dropped.
+      drop = true;
+      }
 
-				// Handle key/value, add to state, etc.
-				bool drop = false;
-				if (!ParseInternalKey(key, &ikey)) {//assign the input key to ikey
-				  // Do not hide error keys
-				  current_user_key.clear();
-				  has_current_user_key = false;
-				  last_sequence_for_key = kMaxSequenceNumber;
-				} else {
-				  if (!has_current_user_key ||
-					  user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
-					// First occurrence of this user key
-					current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
-					has_current_user_key = true;
-					last_sequence_for_key = kMaxSequenceNumber;
-				  }
+      last_sequence_for_key = ikey.sequence;
+    }
 
-				  if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
-					// Hidden by an newer entry for same user key
-					drop = true;    // (A)
-				  } else if (ikey.type == kTypeDeletion &&
-							 ikey.sequence <= compact->smallest_snapshot &&
-							 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {//decide that there is no key entry in other levels needing to be supported by this deletion marker. That is, this level is the keys last level, or base level
-					// For this user key:
-					// (1) there is no data in higher levels
-					// (2) data in lower levels will have larger sequence numbers
-					// (3) data in layers that are being compacted here and have
-					//     smaller sequence numbers will be dropped in the next
-					//     few iterations of this loop (by rule (A) above).
-					// Therefore this deletion marker is obsolete and can be dropped.
-					drop = true;
-				  }
+    if (!drop) {
+      // Open output file if necessary
+      if (compact->builder == NULL) {
+        status = OpenCompactionOutputFile(compact);//open an physical file
+        if (!status.ok()) {
+          break;
+        }
+      }
+      if (compact->builder->NumEntries() == 0) {
+      compact->current_output()->smallest.DecodeFrom(key);
+      }
+      compact->current_output()->largest.DecodeFrom(key);
+      compact->builder->Add(key, input->value());
 
-				  last_sequence_for_key = ikey.sequence;
-				}
+      // Close output file if it is big enough
+      //printf("dbimpl, compact->compaction->MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
+      if (compact->builder->FileSize() >= compact->compaction->MaxOutputFileSize()) {
 
-				if (!drop) {
-				  // Open output file if necessary
-				  if (compact->builder == NULL) {
-					status = OpenCompactionOutputFile(compact);//open an physical file
-					if (!status.ok()) {
-					  break;
-					}
-				  }
-				  if (compact->builder->NumEntries() == 0) {
-					compact->current_output()->smallest.DecodeFrom(key);
-				  }
-				  compact->current_output()->largest.DecodeFrom(key);
-				  compact->builder->Add(key, input->value());
+        //printf("dbimpl, before FinishCompactionOutputFile,counter=%d\n",counter);
+        //printf("dbimpl, before FinishCompactionOutputFile,MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
+        //exit(9);
+        
+        status = FinishCompactionOutputFile(compact, input);
+        
+        fly[level]++;
+        
+        if (!status.ok()) {
+          break;
+        }
+      }
 
-					// Close output file if it is big enough
-					//printf("dbimpl, compact->compaction->MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-				  if (compact->builder->FileSize() >= compact->compaction->MaxOutputFileSize()) {
+    }
 
-					//printf("dbimpl, before FinishCompactionOutputFile,counter=%d\n",counter);
-					//printf("dbimpl, before FinishCompactionOutputFile,MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-					//exit(9);
-					
-					status = FinishCompactionOutputFile(compact, input);
-					
-					fly[level]++;
-					
-					if (!status.ok()) {
-					  break;
-					}
-				  }
-
-				}
-
-				input->Next();
-	}
+    input->Next();
+}
 	
 	//printf("dbimpl.cc, Conca_merge, finish\n");
 
@@ -1026,9 +1016,8 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 	fly[level]=0;
 	
 	return status;
+}
 
- 
- }
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
   printf("dbimpl.cc, DoCompactionWork, begin\n");
   //exit(9);	
@@ -1118,7 +1107,7 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
 
 
 Status DBImpl::Scan(const ReadOptions& options,
-                     const Slice& key, void **buf, int amount){
+                     const Slice& key, void **buf, int amount) {
 	Status s;
 	//printf("dbimpl, scan begin\n");
 
@@ -1725,12 +1714,8 @@ Status DB::Open(const Options& options, const std::string& dbname,
   impl->mutex_.Lock();
   VersionEdit edit;
   
-  printf("dbimpl,Open\n");
-		//exit(9);
   Status s = impl->Recover(&edit); // Handles create_if_missing, error_if_exists
   
-  printf("dbimpl, open\n");
-  //exit(9);
   if (s.ok()) {
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;

@@ -150,14 +150,14 @@ class Version {
 
 
   // Return a human readable string that describes this version's contents.
-  std::string DebugString() const;// implemented as blank.
+  std::string DebugString() const;
 
  private:
   friend class Compaction;
   friend class VersionSet;
 
   class LevelFileNumIterator;
-    class LogicalSSTNumIterator;
+  class LogicalSSTNumIterator;
 
   Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
 

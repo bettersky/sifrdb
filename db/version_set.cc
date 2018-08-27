@@ -1216,27 +1216,46 @@ void Version::Unref() {
 
 std::string Version::DebugString() const {
   std::string r;
-  // for (int level = 0; level < config::kNumLevels; level++) {
-    // // E.g.,
-    // //   --- level 1 ---
-    // //   17:123['a' .. 'd']
-    // //   20:43['e' .. 'g']
-    // r.append("--- level ");
-    // AppendNumberTo(&r, level);
-    // r.append(" ---\n");
-    // const std::vector<FileMetaData*>& files = files_[level];
-    // for (size_t i = 0; i < files.size(); i++) {
-      // r.push_back(' ');
-      // AppendNumberTo(&r, files[i]->number);
-      // r.push_back(':');
-      // AppendNumberTo(&r, files[i]->file_size);
-      // r.append("[");
-      // r.append(files[i]->smallest.DebugString());
-      // r.append(" .. ");
-      // r.append(files[i]->largest.DebugString());
-      // r.append("]\n");
-    // }
-  // }
+  for (int level = 0; level < config::kNumLevels; level++) {
+    // E.g.,
+    //   --- level 1 ---
+    //   17:123['a' .. 'd']
+    //   20:43['e' .. 'g']
+    const std::vector<LogicalMetaData*>& logical_files = logical_files_[level];
+    size_t logical_num = logical_files.size(); 
+    if (logical_num < 1) 
+      break;
+    // level
+    r.append("--- level ");
+    AppendNumberTo(&r, level);
+    r.append(" ---\n");
+    // logical_num 
+    AppendNumberTo(&r, logical_num);
+    r.append("[");
+    for (size_t i = 0; i < logical_num; i++) {
+      const std::vector<PhysicalMetaData>& files = logical_files[i]->physical_files;
+      //r.append(" ");
+      //AppendNumberTo(&r, i);
+      //r.append(" ---\n");
+      //r.append(" files: ");
+      AppendNumberTo(&r, files.size());
+      r.append(", ");
+#if 0
+      for (size_t i = 0; i < files.size(); i++) {
+        r.push_back(' ');
+        AppendNumberTo(&r, files[i].number);
+        r.push_back(':');
+        AppendNumberTo(&r, files[i].file_size);
+        r.append("[");
+        r.append(files[i].smallest.DebugString());
+        r.append(" .. ");
+        r.append(files[i].largest.DebugString());
+        r.append("]\n");
+      }
+#endif
+    }
+    r.append("]\n");
+  }
   return r;
 }
 

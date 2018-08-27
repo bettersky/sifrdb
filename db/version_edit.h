@@ -25,7 +25,7 @@ struct PhysicalMetaData {//
   PhysicalMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { }
 };
 
-struct LogicalMetaData{
+struct LogicalMetaData {
 	
 	int refs;
 	int allowed_seeks;
@@ -35,7 +35,7 @@ struct LogicalMetaData{
 	InternalKey largest;        // Largest internal key served by table
 
 	//std::vector< std::pair<int, PhysicalMetaData> > physical_files;
-	std::vector< PhysicalMetaData > physical_files;
+	std::vector<PhysicalMetaData> physical_files;
 
 	void AppendPhysicalFile(PhysicalMetaData &f);
 	// void AppendPhysicalFile(PhysicalMetaData &f) {

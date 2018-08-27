@@ -118,8 +118,6 @@ int top(char **result) {//1~ 10 :  PR  NI    VIRT    RES    SHR S  (7)%CPU %MEM 
 
 }
 
-
-
 long long read_mb(char *dev){
 
 	int res=0;
@@ -244,7 +242,7 @@ static const char* FLAGS_db = NULL;
 static const char* FLAGS_ycsb_path = NULL;
 
 // stats logging every 1000000 ops 
-static int FLAGS_stats_interval = 10000;
+static int FLAGS_stats_interval = 100000;
 
 namespace leveldb {
 
@@ -1394,7 +1392,7 @@ void print_write_tail(){
 			  
 			ops++;
 			if(0 == ops%FLAGS_stats_interval) {
-        clock_gettime(CLOCK_MONOTONIC,&stage); 
+        clock_gettime(CLOCK_MONOTONIC, &stage); 
         double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
         
         //printf("ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name),get_fly(),  get_sst_num());
@@ -1402,25 +1400,7 @@ void print_write_tail(){
         // int *num_in_levels=(int*)arg;
         // int sequence=0;
         
-        for(int i = 0; i <= getLevel(); i++) {	
-          printf("level %d\n", i);
-          fprintf(stats_log_, "level %d\n", i);			
-          int logical_num = get_dbimpl()->versions_->current_->logical_files_[i].size();						
-          printf("%d{",logical_num);
-          fprintf(stats_log_, "%d{",logical_num);
-          
-          for(int j = 0; j < logical_num; j++) {
-            printf("%d,", get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-            fprintf(stats_log_,"%d,",  get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-          }
-        
-          printf("}\n");
-          fprintf(stats_log_,"}\n");
-        }
-        
-        printf("]\n");
-        fprintf(stats_log_, "]\n");
-        fflush(stats_log_);
+        PrintStats("leveldb.sstables");
 			}
 					
 			if (!s.ok()) {
@@ -1745,7 +1725,7 @@ void ReadRandom(ThreadState* thread) {
     if (!db_->GetProperty(key, &stats)) {
       stats = "(failed)";
     }
-    fprintf(stdout, "\n%s\n", stats.c_str());
+    fprintf(stats_log_, "\n%s\n", stats.c_str());
   }
 
   static void WriteToFile(void* arg, const char* buf, int n) {
