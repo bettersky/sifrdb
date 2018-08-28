@@ -30,7 +30,6 @@ class TwoLevelIterator: public Iterator {
   virtual void SeekToLast();
   virtual void Next();
   virtual void Prev();
-	  
 
 	virtual int isNewSST(){
 			//printf("TwoLevelIterator.cc, isNewSST\n");
@@ -54,6 +53,7 @@ class TwoLevelIterator: public Iterator {
 
 			return index_iter_.nextSSTSmallestKey();
 	}
+
 	virtual int next_sst(){
 			//printf("TwoLevelIterator.cc, next_sst\n");
 			//index_iter_.Valid();
@@ -148,9 +148,6 @@ TwoLevelIterator::TwoLevelIterator(
 TwoLevelIterator::~TwoLevelIterator() {
 }
 
-
-
-
 void TwoLevelIterator::Seek(const Slice& target) {
   index_iter_.Seek(target);
   InitDataBlock();
@@ -173,17 +170,13 @@ void TwoLevelIterator::SeekToLast() {
 }
 
 void TwoLevelIterator::Next() {
-
-//I will know if this the last key.
+  //I will know if this the last key.
 	//fprintf(stderr,"two_level_iterator.cc, Next\n");
   assert(Valid());
   data_iter_.Next();//data_iter_ is also a two level iterator
 	new_sst_flag=0;//Once the Next is called, new_sst_flag is marked as 0.
   SkipEmptyDataBlocksForward();//May mark the new_sst_flag to 1.
 	//fprintf(stderr,"two_level_iterator.cc, next, end, new_sst_flag=%d\n",new_sst_flag);
-
-
-  
 }
 
 void TwoLevelIterator::Prev() {
@@ -192,18 +185,15 @@ void TwoLevelIterator::Prev() {
   SkipEmptyDataBlocksBackward();
 }
 
-
 int TwoLevelIterator::SkipEmptyDataBlocksForward() {
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) {
     // Move to next block
-	//printf("two_level_iterator.cc, move to the next data block\n");
-
     if (!index_iter_.Valid()) {//
       SetDataIterator(NULL);
       return 0;
     }
 	
-	//printf("two_level_iterator.cc, move to the next sst\n");
+	  //printf("two_level_iterator.cc, move to the next sst\n");
     index_iter_.Next();//move to the next SST
     InitDataBlock();
     if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();

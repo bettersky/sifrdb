@@ -416,8 +416,7 @@ class VersionSet {
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.
   Iterator* MakeInputIterator(Compaction* c);
-	Iterator* MakeInputIterator_from_group(std::vector<PhysicalMetaData*>& group);
-		Iterator* MakeInputIterator_conca(Compaction* c);
+	Iterator* MakeInputIterator_conca(Compaction* c);
 
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction(bool* locked, int& level);

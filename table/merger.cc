@@ -21,58 +21,46 @@ class MergingIterator : public Iterator {
         n_(n),
         current_(NULL),
         direction_(kForward) {
-
     for (int i = 0; i < n; i++) {
       children_[i].Set(children[i]);
     }
-
   }
 
   virtual ~MergingIterator() {
     delete[] children_;
   }
-
-
-
-
 	
-	virtual int isNewSST(){
+  virtual int isNewSST() {
 		//printf("merger.cc, isNewSST\n");
 		return current_->isNewSST();
-	
 	}
 	
 	virtual int isOverlapped(){
-			//printf("merger.cc,isOverlapped begin\n");
-			//It is sure that the active key of current_ is smaller than the active keys of other children. So if non-overlapp, all keys of current_ are small than the smallest key of other children.
-			//Slice current_largest= current_->currentSSTLargestKey();//to termine that all keys of current_ are smaller thant other ssts'.
-			int overlap=0;
-			for(int i=0;i<n_;i++){
-				IteratorWrapper* child = &children_[i];
+    //printf("merger.cc,isOverlapped begin\n");
+    //It is sure that the active key of current_ is smaller than the active keys of other children. So if non-overlapp, all keys of current_ are small than the smallest key of other children.
+    //Slice current_largest= current_->currentSSTLargestKey();//to termine that all keys of current_ are smaller thant other ssts'.
+    int overlap=0;
+    for(int i=0;i<n_;i++){
+      IteratorWrapper* child = &children_[i];
 
-				if(&children_[i]==current_){//skip the current_ itself
-					continue;
-				}
-				else if(children_[i].Valid()){
-					//Slice smallest= children_[i].currentSSTSmallestKey();
-
-					if(comparator_->Compare(current_->currentSSTLargestKey(),  children_[i].currentSSTSmallestKey())>=0){//overlapped.
-						overlap=1;
-						break;
-					}
-				}
-
-			}
-			//printf("merger.cc, overlap=%d\n",overlap);
-			return overlap;
-	
+      if(&children_[i]==current_) {//skip the current_ itself
+        continue;
+      } else if (children_[i].Valid()) {
+        //Slice smallest= children_[i].currentSSTSmallestKey();
+        if(comparator_->Compare(current_->currentSSTLargestKey(), 
+          children_[i].currentSSTSmallestKey())>=0) {//overlapped.
+          overlap=1;
+          break;
+        }
+      }
+    }
+    //printf("merger.cc, overlap=%d\n",overlap);
+    return overlap;
 	}
 	
-	virtual int get_sst_meta(const void **arg){
+	virtual int get_sst_meta(const void **arg) {
 		//printf("merger.cc, get_sst_meta\n");
-		
 		current_->get_sst_meta(arg);
-	
 	}
 
 	virtual int next_sst(){

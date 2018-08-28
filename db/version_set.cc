@@ -2075,11 +2075,7 @@ void VersionSet::GetRange2(const std::vector<LogicalMetaData*>& inputs1,
   GetRange(all, smallest, largest);
 }
 
-
 Iterator* VersionSet::MakeInputIterator_conca(Compaction* c) {
-
-	//fprintf(stderr,"version_set.cc, MakeInputIterator,exit\n");
-	//exit(9);
   ReadOptions options;
   options.verify_checksums = options_->paranoid_checks;
   options.fill_cache = false;
@@ -2087,52 +2083,24 @@ Iterator* VersionSet::MakeInputIterator_conca(Compaction* c) {
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
   // TODO(opt): use concatenating iterator for level-0 if there is no overlap
-  //const int space = (c->level() == 0 ? c->inputs_[0].size() + 1 : 2);
-  //const int space =  c->inputs_[0].size();//number of iteraters
-	const int space =  c->logical_files_inputs_.size();//number of iteraters
-   Iterator** list = new Iterator*[space];
-   int num = 0;
-//printf("version_set.cc, MakeInputIterator,33333333333333333\n");
+  
+  //number of iterators 
+	const int space =  c->logical_files_inputs_.size(); 
+  Iterator** list = new Iterator*[space];
+  int num = 0;
    
-   for(int i=0;i<space;i++){
-		// std::vector<PhysicalMetaData*> SSTlist;
-		// SSTlist.clear();
-		// for(int j=0; j< c->logical_files_inputs_[i]->physical_files.size();j++){
-			// SSTlist.push_back( &(c->logical_files_inputs_[i]->physical_files[j]) );
-		// }
-        list[num++] = NewTwoLevelIterator(
-            new Version::LogicalSSTNumIterator(icmp_, c->logical_files_inputs_[i]),
-            &GetFileIterator, table_cache_, options);		
-   
-   }
-//printf("version_set.cc, MakeInputIterator,55555555555555\n");
+  for (int i = 0; i < space; i++) {
+    list[num++] = NewTwoLevelIterator(
+        new Version::LogicalSSTNumIterator(icmp_, c->logical_files_inputs_[i]),
+        &GetFileIterator, table_cache_, options);		
+  }
 
   assert(num <= space);
   Iterator* result = NewMergingIterator(&icmp_, list, num);
   delete[] list;
-//printf("version_set.cc, MakeInputIterator,end\n");
-
   return result;
 }
-Iterator* VersionSet::MakeInputIterator_from_group(std::vector<PhysicalMetaData*>& group){
-	// printf("version set.cc, meta size=%d\n", sizeof(PhysicalMetaData));
-		// exit(9);
 
-	ReadOptions options;
-	options.verify_checksums = options_->paranoid_checks;
-	options.fill_cache = false;
-
-	const int space =  group.size();
-	Iterator** list = new Iterator*[space];
-	int num = 0;
-	//const std::vector<PhysicalMetaData*>& files = group;
-	for (size_t i = 0; i < group.size(); i++) {
-          list[num++] = table_cache_->NewIterator(options, group[i]->number, group[i]->file_size);
-	}
-	 Iterator* result = NewMergingIterator(&icmp_, list, num);
-	delete[] list;
-	return result;
-}
 Iterator* VersionSet::MakeInputIterator(Compaction* c) {
 
 	fprintf(stderr,"version_set.cc, MakeInputIterator,exit\n");
