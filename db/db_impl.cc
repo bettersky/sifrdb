@@ -385,7 +385,7 @@ Status DBImpl::Recover(VersionEdit* edit) {
     // Recover in the order in which the logs were generated
     std::sort(logs.begin(), logs.end());
     for (size_t i = 0; i < logs.size(); i++) {
-      //s = RecoverLogFile(logs[i], edit, &max_sequence); //avoid to recover the log to a small ldb
+      s = RecoverLogFile(logs[i], edit, &max_sequence); //avoid to recover the log to a small ldb
 
       // The previous incarnation may not have written any MANIFEST
       // records after allocating this log number.  So we manually
@@ -510,15 +510,11 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 	  
 	  pending_outputs_.insert(physical_meta.number);//this is a interesting thing needs to be reviewed.
 	  Iterator* iter = mem->NewIterator();
-	//printf("WriteLevel0Table, number=%d\n", physical_meta.number);
 	  Status s;
 	  {
       mutex_.Unlock();
       
-      //printf("dbimpl,Buildtable\n");
       s = BuildTable(dbname_, env_, options_, table_cache_, iter, &physical_meta);
-      //exit(0);
-      //return Status::OK();
       mutex_.Lock();
 	  }
 
@@ -540,7 +536,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 		//}
 		//edit->AddFile(level, logical_meta.number, logical_meta.file_size,
 					  //logical_meta.smallest, logical_meta.largest);
-			edit->AddLogicalFile(level,logical_meta);
+			edit->AddLogicalFile(level, logical_meta);
 	  }
 
 	  CompactionStats stats;
@@ -548,8 +544,6 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 	  stats.bytes_written = logical_meta.file_size;
 	  stats_[level].Add(stats);
 	  
-	  //printf("dbimpl, WriteLevel0Table end\n");
-	  //exit(0);
 	  return s;
 }
 
@@ -1136,14 +1130,7 @@ Status DBImpl::Get(const ReadOptions& options,
                    const Slice& key,
                    std::string* value) {
   Status s;
-  //printf("dbimpl, Get, before MutexLock\n");
-  
   MutexLock l(&mutex_);
-  //MutexLock *l=new MutexLock((&mutex_));
-  //delete l;
-   //printf("dbimpl, Get, after MutexLock\n");
-   //exit(9);
-   
   SequenceNumber snapshot;
   if (options.snapshot != NULL) {
     snapshot = reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_;
@@ -1177,17 +1164,9 @@ Status DBImpl::Get(const ReadOptions& options,
     mutex_.Lock();
   }
 
-	//printf("dbimpl. get, 77777777777\n");
-	//MaybeScheduleCompaction();
-  //if (have_stat_update && current->UpdateStats(stats)) {
-	//printf("dbimpl. get, MaybeScheduleCompaction\n" );
-   // MaybeScheduleCompaction();
-  //}
-  //printf("dbimpl. get, 888888\n");
   mem->Unref();
   if (imm != NULL) imm->Unref();
   current->Unref();
-   //printf("dbimpl, Get, end\n");
   return s;
 }
 

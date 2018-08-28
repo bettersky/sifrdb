@@ -24,12 +24,7 @@
 #include "util/mutexlock.h"
 #include "util/posix_logger.h"
 
-
 extern uint64_t diskTrafficBytes;
-//int opened;
-//int closed;
-
-//int open1;
 
 namespace leveldb {
 
@@ -333,41 +328,33 @@ class PosixEnv : public Env {
     }
   }
 
-  
-  
-
-
-
-virtual Status NewRandomAccessFile(const std::string& fname,
-                                     RandomAccessFile** result) {
-    *result = NULL;
-    Status s;
-    int fd = open(fname.c_str(), O_RDONLY);
-    if (fd < 0) {
-      s = IOError(fname, errno);
-    } else if (0) {//mmap_limit_.Acquire()
-      uint64_t size;
-      s = GetFileSize(fname, &size);
-      if (s.ok()) {
-        void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-        if (base != MAP_FAILED) {
-          *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
-        } else {
-          s = IOError(fname, errno);
+  virtual Status NewRandomAccessFile(const std::string& fname,
+                                      RandomAccessFile** result) {
+      *result = NULL;
+      Status s;
+      int fd = open(fname.c_str(), O_RDONLY);
+      if (fd < 0) {
+        s = IOError(fname, errno);
+      } else if (0) {//mmap_limit_.Acquire()
+        uint64_t size;
+        s = GetFileSize(fname, &size);
+        if (s.ok()) {
+          void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+          if (base != MAP_FAILED) {
+            *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
+          } else {
+            s = IOError(fname, errno);
+          }
         }
+        close(fd);
+        if (!s.ok()) {
+          mmap_limit_.Release();
+        }
+      } else {
+        *result = new PosixRandomAccessFile(fname, fd);
       }
-      close(fd);
-      if (!s.ok()) {
-        mmap_limit_.Release();
-      }
-    } else {
-      *result = new PosixRandomAccessFile(fname, fd);
-    }
-    return s;
-}
-
-
-
+      return s;
+  }
 
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
@@ -375,9 +362,6 @@ virtual Status NewRandomAccessFile(const std::string& fname,
     FILE* f = fopen(fname.c_str(), "w");
 	
     if (f == NULL) {
-		fprintf(stderr,"envposix, fopen err,exit,errno=%d\n",errno);
-		sleep(99999);
-		//exit(1);
       *result = NULL;
       s = IOError(fname, errno);
     } else {
@@ -407,7 +391,6 @@ virtual Status NewRandomAccessFile(const std::string& fname,
   }
 
   virtual Status DeleteFile(const std::string& fname) {
-  //printf("env_posix, DeleteFile\n");
     Status result;
     if (unlink(fname.c_str()) != 0) {
       result = IOError(fname, errno);
@@ -486,7 +469,6 @@ virtual Status NewRandomAccessFile(const std::string& fname,
   }
 
   virtual void Schedule(void (*function)(void*), void* arg);
-
 
   virtual void StartThread(void (*function)(void* arg), void* arg);
 
@@ -604,38 +586,23 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 		
   }
 
-
   if (queue_.empty()) {// typedef std::deque<BGItem> BGQueue; BGQueue queue_; 这是一个双端队列
-	  //printf("schedule before signal, queue_.empty()=%d\n",queue_.empty());
     PthreadCall("signal", pthread_cond_signal(&bgsignal_));//解锁。
-		 //printf("schedule after signal, sleep queue_.empty()=%d\n",queue_.empty());
-		  //sleep(2);	
   }
 
   // Add to priority queue
   queue_.push_back(BGItem());//BGItem 是一个结构体，包含函数指针和参数。
   queue_.back().function = function;//这个函数是 void DBImpl::BGWork(void* db)
   queue_.back().arg = arg;//这个参数是 DBimpl 指针。
-//printf("schedule before signal, queue_.empty()=%d\n",queue_.empty());
   PthreadCall("unlock", pthread_mutex_unlock(&mu_));//only to here the BGThread can go on
-  //printf("schedule after signal, queue_.empty()=%d\n",queue_.empty());
-
-   //sleep(5);
 }
 
 void PosixEnv::BGThread() {
-  //printf("env_posix, BGThread, begin\n");
-
   while (true) {
     // Wait until there is an item that is ready to run
     PthreadCall("lock", pthread_mutex_lock(&mu_));
-	//printf("env_posix, BGThread,1111111111,queue_.empty()=%d\n",queue_.empty());
     while (queue_.empty()) {
-		 //printf("env_posix, BGThread,queue_.empty()=%d, before wait\n",queue_.empty());
       PthreadCall("wait", pthread_cond_wait(&bgsignal_, &mu_));
-	  		 //printf("env_posix, BGThread,queue_.empty()=%d, after wait\n",queue_.empty());
-
-		
     }
 	
     void (*function)(void*) = queue_.front().function;// void DBImpl::BGWork(void* db)
@@ -643,7 +610,7 @@ void PosixEnv::BGThread() {
     queue_.pop_front(); // remove the front
 
     PthreadCall("unlock", pthread_mutex_unlock(&mu_));
-    (*function)(arg);// BGWork(dbimpl);
+    (*function)(arg); // BGWork(dbimpl);
   }
 }
 

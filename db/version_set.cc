@@ -91,9 +91,10 @@ Version::~Version() {
   }
 }
 
+//find the physical file that possiblely includes the key,  in the given logical file
 int FindFile(const InternalKeyComparator& icmp,
 			 const LogicalMetaData& logical_file,
-             const Slice& key) {//find the physical file that possiblely includes the key,  in the given logical file 
+             const Slice& key) { 
   uint32_t left = 0;
   uint32_t right = logical_file.physical_files.size();
   while (left < right) {
@@ -831,59 +832,51 @@ mutex_for_scan.Unlock();
 		return Status::OK();
 }
 
-
 Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
                     GetStats* stats) {
-					
 	//printf("Version_set, get, begin\n");				
- Slice ikey = k.internal_key();
- Slice user_key = k.user_key();
+  Slice ikey = k.internal_key();
+  Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
-  
 
-int method=read_method;// 0 is multi thread, 1 is single thread.
- //********************************lsm-forest begin**************************************************
-//#define TH_NUM read_thead
+  int method=read_method;// 0 is multi thread, 1 is single thread.
+  //********************************lsm-forest begin**************************************************
+  //#define TH_NUM read_thead
 
-if(0==method){//Multi-thread way.
-	//has_created=1;
-   if(!has_created){//Create thread pool. It is better to move this function out to be as a independent function.
-		thread_idle=0;
-		
-		searching_left=NULL;
-		searching_right=NULL;
-		queue_size=0;
+  if(0==method){//Multi-thread way.
+	  //has_created=1;
+    if(!has_created) {//Create thread pool. It is better to move this function out to be as a independent function.
+      thread_idle=0;
+      
+      searching_left=NULL;
+      searching_right=NULL;
+      queue_size=0;
 
-		printf("Version::Get, before Fores_thread_create, thread num=%d\n", read_thread);
-		Fores_thread_create(read_thread);
-		printf("Version::Get, after Fores_thread_create\n");
+      printf("Version::Get, before Fores_thread_create, thread num=%d\n", read_thread);
+      Fores_thread_create(read_thread);
+      printf("Version::Get, after Fores_thread_create\n");
 
-		has_created=true;
-		logical_file_total=0;
-				
-		for (int level = 0; level < config::kNumLevels; level++) {			
-			
-			for(int j=0;j<logical_files_[level].size();j++){			
-				logical_files_set[logical_file_total] = logical_files_[level][j];				
-			
-				logical_file_total++;
-			}
-			
-			printf("Version::Get, logical_files_ in lev %d=%d\n", level, logical_files_[level].size());
-		}
-		
-		//usleep(10000);//Assuring all the threads are prepared (an ugly way).
-		while(thread_idle<read_thread);
-		
-		printf("versionset.cc, get, thread created finished,thread_idle=%d\n", thread_idle);
-	}
+      has_created=true;
+      logical_file_total=0;
+          
+      for (int level = 0; level < config::kNumLevels; level++) {			
+        for(int j=0;j<logical_files_[level].size();j++) {			
+          logical_files_set[logical_file_total] = logical_files_[level][j];				
+          logical_file_total++;
+        }
+        printf("Version::Get, logical_files_ in lev %d=%d\n", level, logical_files_[level].size());
+      }
+      //usleep(10000);//Assuring all the threads are prepared (an ugly way).
+      while(thread_idle<read_thread);
+      printf("versionset.cc, get, thread created finished,thread_idle=%d\n", thread_idle);
+	  }
 		//clock_gettime(CLOCK_MONOTONIC,&search_begin);
 		
 		//printf("version set, begin, left=%p,right=%p\n", searching_left,searching_right);
-//***************************************construct the search item begin
-		 Searching_item *new_item= new Searching_item();;
+    //***************************************construct the search item begin
+		Searching_item *new_item= new Searching_item();;
 		new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.		
 		new_item->options= options;//provide argument for thread search		
 		new_item->ucmp=ucmp;
@@ -898,8 +891,7 @@ mutex_for_searching_queue.Lock();
 			}
 			
 			searching_left=new_item;
-			
-			if(searching_right==NULL){
+			if(searching_right==NULL) {
 				searching_right=new_item;
 			}
 			
@@ -921,11 +913,7 @@ mutex_for_searching_queue.Unlock();
 			//cv_for_searching.SignalAll();
 				//Go on polling		
 				usleep(1);
-
-								
 		}
-		
-	
 		
 mutex_for_searching_queue.Lock();	//Needing lock because the searching threads may be accessing the item.
 		Searching_item *temp = searching_right;//for delete
@@ -951,14 +939,6 @@ mutex_for_searching_queue.Unlock();
 	else return Status::NotFound(Slice());
 }	 
  //********************************lsm-forest end**************************************************
-  
-  
-  
-  
-  
-  
-  
-  
   
 if(1==method){  //Traditional way
   
@@ -987,25 +967,25 @@ if(1==method){  //Traditional way
 	std::vector<PhysicalMetaData*> tmp;//to hold the files to be search
 
   for (int level = 0; level < config::kNumLevels; level++) {
- 
 		tmp.clear();//mei 
 		size_t num_logical_files = logical_files_[level].size(); 
 		if (num_logical_files == 0) continue;
 		// Get the list of files to search in this level
 		LogicalMetaData* const* logical_files_in_level = &logical_files_[level][0];
     
-		tmp.reserve(num_logical_files);//each logical file at most have one physical responsive physical file
+    //each logical file at most have one physical responsive physical file
+		tmp.reserve(num_logical_files);
 		//may need to make sure the logical files in the level are sorted by time.
 		for (uint32_t i = 0; i < num_logical_files; i++) {//get the physical files may be contain the keys.
 			LogicalMetaData* logical_f = logical_files_in_level[i];
-			if (ucmp->Compare(user_key, logical_f->smallest.user_key()) >= 0 &&ucmp->Compare(user_key, logical_f->largest.user_key()) <= 0) {
+			if (ucmp->Compare(user_key, logical_f->smallest.user_key()) >= 0 &&
+          ucmp->Compare(user_key, logical_f->largest.user_key()) <= 0) {
 				//within logical range.
 				uint32_t index = FindFile(vset_->icmp_, *logical_f, ikey);
 				if (index >= logical_f->physical_files.size()) {
 					//do nothing. no physical file responses to this key.
-				}
-				else if (ucmp->Compare(user_key, logical_f->physical_files[index].smallest.user_key()) >= 0){//find a physical file	
-					tmp.push_back(&(logical_f->physical_files[index]));//tmp contains pointers
+				} else if (ucmp->Compare(user_key, logical_f->physical_files[index].smallest.user_key()) >= 0) {//find a physical file	
+					tmp.push_back(&(logical_f->physical_files[index])); //tmp contains pointers
 				}      
 			}
 		}
@@ -1223,8 +1203,7 @@ std::string Version::DebugString() const {
     //   20:43['e' .. 'g']
     const std::vector<LogicalMetaData*>& logical_files = logical_files_[level];
     size_t logical_num = logical_files.size(); 
-    if (logical_num < 1) 
-      break;
+    if (logical_num == 0) continue; 
     // level
     r.append("--- level ");
     AppendNumberTo(&r, level);
@@ -1639,108 +1618,88 @@ void VersionSet::AppendVersion(Version* v) {
 }
 
 Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
+  if (edit->has_log_number_) {
+    assert(edit->log_number_ >= log_number_);
+    assert(edit->log_number_ < next_file_number_);
+  } else {
+    edit->SetLogNumber(log_number_);
+  }
 
-		//printf("version_set, LogAndApply, begin\n");
+  if (!edit->has_prev_log_number_) {
+    edit->SetPrevLogNumber(prev_log_number_);
+  }
 
-		//printf("version_set, LogAndApply, logical id=%d, phy size=%d \n", edit->new_logical_file.number,edit->new_logical_file.physical_files.size());
-		
-			//for(int i=0;i<current_->files_[0].size();i++){
-				// printf("%d ",current_->files_[0][i]->number);
-			// }
-			// printf("\n");
-		
-		  if (edit->has_log_number_) {
-			assert(edit->log_number_ >= log_number_);
-			assert(edit->log_number_ < next_file_number_);
-		  } else {
-			edit->SetLogNumber(log_number_);
-		  }
+  edit->SetNextFile(next_file_number_);
+  edit->SetLastSequence(last_sequence_);
 
-		  if (!edit->has_prev_log_number_) {
-			edit->SetPrevLogNumber(prev_log_number_);
-		  }
+  Version* v = new Version(this);
+  {
+    Builder builder(this, current_);
+    builder.Apply(edit);
+    builder.SaveTo(v);
+  }
+    
+  //Finalize(v);
+  
+  // Initialize new descriptor log file if necessary by creating
+  // a temporary file that contains a snapshot of the current version.
+  std::string new_manifest_file;
+  Status s;
+  if (descriptor_log_ == NULL) {
+    // No reason to unlock *mu here since we only hit this path in the
+    // first call to LogAndApply (when opening the database).
+    assert(descriptor_file_ == NULL);
+    new_manifest_file = DescriptorFileName(dbname_, manifest_file_number_);
+    edit->SetNextFile(next_file_number_);
+    s = env_->NewWritableFile(new_manifest_file, &descriptor_file_);
+    if (s.ok()) {
+      descriptor_log_ = new log::Writer(descriptor_file_);
+      s = WriteSnapshot(descriptor_log_);
+    }
+  }
 
-		  edit->SetNextFile(next_file_number_);
-		  edit->SetLastSequence(last_sequence_);
+  // Unlock during expensive MANIFEST log write
+  {
+    //mu->Unlock();
 
-		  Version* v = new Version(this);
-		  {
-			Builder builder(this, current_);
-			builder.Apply(edit);
-			builder.SaveTo(v);
-			
-			//printf("version_set, LogAndApply, current_ 0 size=%d, v 0 size=%d\n", current_->files_[0].size(),v->files_[0].size());
-		  }
-		   
-		  //Finalize(v);
-		  
-		  // Initialize new descriptor log file if necessary by creating
-		  // a temporary file that contains a snapshot of the current version.
-		  std::string new_manifest_file;
-		  Status s;
-		  if (descriptor_log_ == NULL) {
-			// No reason to unlock *mu here since we only hit this path in the
-			// first call to LogAndApply (when opening the database).
-			assert(descriptor_file_ == NULL);
-			new_manifest_file = DescriptorFileName(dbname_, manifest_file_number_);
-			edit->SetNextFile(next_file_number_);
-			s = env_->NewWritableFile(new_manifest_file, &descriptor_file_);
-			if (s.ok()) {
-			  descriptor_log_ = new log::Writer(descriptor_file_);
-			  s = WriteSnapshot(descriptor_log_);
-			}
-		  }
+    // Write new record to MANIFEST log
+    if (s.ok()) {
+      std::string record;
+      edit->EncodeTo(&record);
+      s = descriptor_log_->AddRecord(record);
+      if (s.ok()) {
+        s = descriptor_file_->Sync();
+      }
+      if (!s.ok()) {
+        Log(options_->info_log, "MANIFEST write: %s\n", s.ToString().c_str());
+      }
+    }
 
-		  // Unlock during expensive MANIFEST log write
-		  {
-			//mu->Unlock();
+    // If we just created a new descriptor file, install it by writing a
+    // new CURRENT file that points to it.
+    if (s.ok() && !new_manifest_file.empty()) {
+      s = SetCurrentFile(env_, dbname_, manifest_file_number_);
+    }
+    //mu->Lock();
+  }
 
-			// Write new record to MANIFEST log
-			if (s.ok()) {
-			  std::string record;
-			  edit->EncodeTo(&record);
-			  s = descriptor_log_->AddRecord(record);
-			  if (s.ok()) {
-				s = descriptor_file_->Sync();
-			  }
-			  if (!s.ok()) {
-				Log(options_->info_log, "MANIFEST write: %s\n", s.ToString().c_str());
-			  }
-			}
+  // Install the new version
+  if (s.ok()) {
+    AppendVersion(v);
+    log_number_ = edit->log_number_;
+    prev_log_number_ = edit->prev_log_number_;
+  } else {
+    delete v;
+    if (!new_manifest_file.empty()) {
+      delete descriptor_log_;
+      delete descriptor_file_;
+      descriptor_log_ = NULL;
+      descriptor_file_ = NULL;
+      env_->DeleteFile(new_manifest_file);
+    }
+  }
 
-			// If we just created a new descriptor file, install it by writing a
-			// new CURRENT file that points to it.
-			if (s.ok() && !new_manifest_file.empty()) {
-			  s = SetCurrentFile(env_, dbname_, manifest_file_number_);
-			}
-
-			//mu->Lock();
-		  }
-
-		  // Install the new version
-		  if (s.ok()) {
-			AppendVersion(v);
-			//printf("version_set, LogAndApply,after AppendVersion,current_ 0 size=%d, v 0 size=%d\n", current_->files_[0].size(),v->files_[0].size());
-			  //printf("version_set, LogAndApply, after AppendVersion, lev 0 need comp=%d,\n", Need_compact(0));
-			log_number_ = edit->log_number_;
-			prev_log_number_ = edit->prev_log_number_;
-		  } else {
-			delete v;
-			if (!new_manifest_file.empty()) {
-			  delete descriptor_log_;
-			  delete descriptor_file_;
-			  descriptor_log_ = NULL;
-			  descriptor_file_ = NULL;
-			  env_->DeleteFile(new_manifest_file);
-			}
-		  }
-
-		// printf("LogAndApply, end\n");
-		// for(int i=0;i<current_->files_[0].size();i++){
-				// printf("%d ",current_->files_[0][i]->number);
-		// }
-		// printf("\n");
-		  return s;
+  return s;
 }
 
 int VersionSet::Test(){

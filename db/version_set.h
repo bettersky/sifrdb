@@ -18,16 +18,17 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <deque>
 #include "db/dbformat.h"
 #include "db/version_edit.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
-
-#include <deque>
-
 #include "table/filter_block.h"
 
-
+//#define READ_PARALLEL
+#ifdef READ_PARALLEL
+#define NUM_READ_THREADS 16
+#endif
 namespace leveldb {
 
 namespace log { class Writer; }

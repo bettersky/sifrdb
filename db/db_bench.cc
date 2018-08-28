@@ -349,58 +349,29 @@ class Stats {
   }
 
   void FinishedSingleOp() {
-  //   if (FLAGS_histogram) {
-  //     double now = Env::Default()->NowMicros();
-  //     double micros = now - last_op_finish_;
-  //     hist_.Add(micros);
-  //     if (micros > 20000) {
-  //       fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
-  //       fflush(stderr);
-  //     }
-  //     last_op_finish_ = now;
-  //   }
-
-  //   done_++;
-	
-	// int rate=1000000;
-	// //int sync_rate=50000;
-	// //int fill100k_rate=1000;
-	// //printf("done_: %08d \n",done_);
-	// //if( (0==done_%rate) || ( (1==sync_flag)&&(0==done_%sync_rate) ) || ((1==fill100k_flag)&&(0==done_%fill100k_rate))){
-		
-	// 	//printf("in FinishedSingleOp\n");
-	// 		if(0==done_%rate){
-	// 			clock_gettime(CLOCK_MONOTONIC,&stage); 
-	// 			double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-	// 			printf("done_:stage_time= %012ld  %f	disk traffic=%ld	wa=%f\n",done_, stage_time, diskTrafficBytes);
-				
-	// 			fprintf(stats_log_,"done_:stage_time= %012ld  %f	delte file time=%f\n",done_, stage_time,durations[60]);
-	// 			fflush(stats_log_);
-	// 		}
-	// 		//fprintf(stats_log_, "done_:stage_time= %010d  %f\n",done_, stage_time);
-	//  //}
-	//  /*
-  //   if (done_ >= next_report_) {
-  //     if      (next_report_ < 1000)   next_report_ += 100;
-  //     else if (next_report_ < 5000)   next_report_ += 500;
-  //     else if (next_report_ < 10000)  next_report_ += 1000;
-  //     else if (next_report_ < 50000)  next_report_ += 5000;
-  //     else if (next_report_ < 100000) next_report_ += 10000;
-  //     else if (next_report_ < 500000) next_report_ += 50000;
-  //     else                            next_report_ += 100000;
-  //     fprintf(stderr, "mmmmmm... finished %d ops%30s\r", done_, "");
-	//   int rate=1000000;
-	//   int sync_rate=1000;
-	//   if( (0==done_%rate) || ( (1==sync_flag)&&(0==done_%sync_rate)  )){
-	// 		clock_gettime(CLOCK_MONOTONIC,&stage); 
-	// 		double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-
-	// 		printf("done_:stage_time= %08d  %f\n",done_, stage_time);
-	//   }
-  //     fflush(stderr);
-	  
-  //   }
-	// */
+    if (FLAGS_histogram) {
+      double now = Env::Default()->NowMicros();
+      double micros = now - last_op_finish_;
+      hist_.Add(micros);
+      if (micros > 20000) {
+        fprintf(stderr, "long op: %.1f micros%30s\r", micros, ""); 
+        fflush(stderr);
+      }    
+      last_op_finish_ = now; 
+    }    
+  
+    done_++;
+    if (done_ >= next_report_) {
+      if      (next_report_ < 1000)   next_report_ += 100; 
+      else if (next_report_ < 5000)   next_report_ += 500; 
+      else if (next_report_ < 10000)  next_report_ += 1000;
+      else if (next_report_ < 50000)  next_report_ += 5000;
+      else if (next_report_ < 100000) next_report_ += 10000;
+      else if (next_report_ < 500000) next_report_ += 50000;
+      else                            next_report_ += 100000;
+      fprintf(stdout, "... finished %d ops%30s\r", done_, ""); 
+      fflush(stderr);
+    }
   }
 
   void AddBytes(int64_t n) {
@@ -1352,161 +1323,151 @@ void RunYCSB(ThreadState* thread) {
 		//printf("advised/read=%f\n",durations[60]);
   }
 //----------------------------------------------------------------------------------  
-void print_write_tail(){
+void print_write_tail() {
 }
 
-  void DoWrite(ThreadState* thread, bool seq) {
-	  printf("I amd db_bench.cc, DoWrite,begin\n");
-	  //exit(1);//test if log is deleted  --yes
-    if (num_ != FLAGS_num) {
-      char msg[100];
-      snprintf(msg, sizeof(msg), "(%d ops)", num_);
-      thread->stats.AddMessage(msg);
-    } 
+void DoWrite(ThreadState* thread, bool seq) {
+  fprintf(stats_log_, "db_bench: DoWrite,begin\n");
+  if (num_ != FLAGS_num) {
+    char msg[100];
+    snprintf(msg, sizeof(msg), "(%d ops)", num_);
+    thread->stats.AddMessage(msg);
+  } 
 
-    RandomGenerator gen;
-    WriteBatch batch;
-    Status s;
-    int64_t bytes = 0;
-	  //printf("I amd db_bench.cc, DoWrite,entries_per_batch_=%d\n",entries_per_batch_);
-	
-	  srand(time(NULL));
-    printf("I am db_bench.cc, begin insert, num_=%ld\n",num_);
-    uint64_t i;
-    uint64_t ops = 0;
+  RandomGenerator gen;
+  WriteBatch batch;
+  Status s;
+  int64_t bytes = 0;
 
-    clock_gettime(CLOCK_MONOTONIC,&begin); //begin insert , so begin counting
+  srand(time(NULL));
+  uint64_t i;
+  uint64_t ops = 0;
 
-    for (i = 0; i < num_; i += entries_per_batch_) {
-			batch.Clear();
-			for (int j = 0; j < entries_per_batch_; j++) {
-				const int k = seq ? i+j : (thread->rand.Next() % FLAGS_num);
-				char key[100];
-				snprintf(key, sizeof(key), "%016d", k);
-				batch.Put(key, gen.Generate(value_size_));
-				bytes += value_size_ + strlen(key);
-				//thread->stats.FinishedSingleOp();
-			}
-					
-			s = db_->Write(write_options_, &batch);
-			  
-			ops++;
-			if(0 == ops%FLAGS_stats_interval) {
-        clock_gettime(CLOCK_MONOTONIC, &stage); 
-        double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-        
-        //printf("ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name),get_fly(),  get_sst_num());
-        //fprintf(stats_log_,"ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name), get_fly(),  get_sst_num());
-        // int *num_in_levels=(int*)arg;
-        // int sequence=0;
-        
-        PrintStats("leveldb.sstables");
-			}
-					
-			if (!s.ok()) {
-				fprintf(stderr, " I am db_bench.cc,  do write, put error: %s\n", s.ToString().c_str());
-				printf("I am db_bench.cc, i=%ld\n",i);
-				//s=Status::OK();
-				exit(1);
-			}
+  clock_gettime(CLOCK_MONOTONIC,&begin); //begin insert , so begin counting
+
+  for (i = 0; i < num_; i += entries_per_batch_) {
+    batch.Clear();
+    for (int j = 0; j < entries_per_batch_; j++) {
+      const int k = seq ? i+j : (thread->rand.Next() % FLAGS_num);
+      char key[100];
+      snprintf(key, sizeof(key), "%016d", k);
+      batch.Put(key, gen.Generate(value_size_));
+      bytes += value_size_ + strlen(key);
+      thread->stats.FinishedSingleOp();
+      //fprintf(stats_log_, "key: %s \n", key);
     }
-	
-    fclose(stats_log_);
-    printf("write finished\n");
-    printf("I am db_bench.cc, i=%ld\n", i);
-    thread->stats.AddBytes(bytes);
-    //print_write_tail();
-
-    //clock_gettime(CLOCK_MONOTONIC,&end); //begin insert , so begin counting
-    //duration=( (int)end.tv_sec+((double)end.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-
-    //printf(">>>>>>\n");
-    //printf("DoWrite total time: %f s\n",duration);
-    // printf("In db_bench.cc,write_total: %llu\n",write_total);
-    // printf("In db_bench.cc,write_total_log: %llu\n",write_total_log);
-    // printf("In db_bench.cc,block layer thoughput: %.2f\n",(double)write_total/duration/1024/1024);
-    // printf("<<<<<<<<<<\n");
-    // printf("In envposix, Sync-sync time: %f s\n",durations[35]);
-    // printf("In envposix, Sync-counter time: %f s\n",durations[36]);
-    // printf("In db_impl.cc, int, in Write ,mem total time: %f s\n",durations[4]);
-    // printf("In db_impl.cc, int, in Write ,makeroom total time: %f s\n",durations[2]);
-    // printf("In db_impl.cc, int, in Write ,log total time: %f s\n",durations[3]);
-
-    // printf("In db_impl.cc, write_total time:%f s\n",durations[1]);
-
-    // printf("In db_impl.cc, finish compaction 1:%f\n",durations[40]);
-    // printf("In db_impl.cc, finish compaction 2:%f\n",durations[41]);
-    // printf("In db_impl.cc, finish compaction 3:%f\n",durations[42]);
-    // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
-
-    // printf("----DoCompactionWork:%f s\n",durations[19]);
-    // printf("Total	write_total	makeroom	log	mem	back	sync\n");
-    // printf("%f	%f	%f	%f	%f	%f	%f\n",duration,durations[1],durations[2],durations[3],durations[4], durations[43],durations[35]);
-    
-    // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
-    // printf("In db_impl.cc, back compaction call:%f\n",durations[71]);
-    // printf("In db_impl.cc, do compaction call:%f\n",durations[72]);
-    /*
-    printf("In db_impl.cc, write total time:%f s\n",durations[1]);
-    printf("In db_impl.cc, int, in Write ,MakeRoomForWrite total time:%f s\n",durations[2]);
-    printf("----MakeRoomForWrite2:%f s\n",durations[10]);
-    printf("----while:%f s\n",durations[14]);
-    printf("----if1:%f s\n",durations[15]);
-    printf("----blank:%f s\n",durations[16]);
-    printf("----wait1:%f s\n",durations[13]);
-    printf("----wait2:%f s\n",durations[12]);
-    printf("----NewWritableFile:%f s\n",durations[11]);
-    printf("----sleep:%f s\n",durations[9]);
-    printf("----before MaybeScheduleCompaction:%f s\n",durations[8]);
-    printf("----MaybeScheduleCompaction:%f s\n",durations[7]);
-
-    printf("----BackgroundCompaction:%f s\n",durations[17]);
-    printf("----CompactMemTable:%f s\n",durations[18]);
-    printf("----DoCompactionWork:%f s\n",durations[19]);
-    printf("----DoCompactionWork,Ndrop:%f s\n",durations[20]);
-    printf("----DoCompactionWork,Ndrop:Add:%f s\n",durations[21]);
-    printf("In envposix, Flush time:%f s\n",durations[34]);
-    printf("In envposix, Sync-Flush time:%f s\n",durations[36]);
-    printf("In envposix, Sync-sync time:%f s\n",durations[35]);
-    printf("----DoCompactionWork,Ndrop:T0:%f s\n",durations[24]);
-    printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile1:%f s\n",durations[25]);
-    printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile2:%f s\n",durations[26]);
-    printf("----open_file:%f s\n",durations[27]);
-    printf("----acess:%f s\n",durations[29]);
-    printf("----create_entry:%f s\n",durations[28]);
-    printf("----DoCompactionWork,Ndrop:T1:%f s\n",durations[22]);
-    printf("----DoCompactionWork,Ndrop:T2:%f s\n",durations[23]);
-    printf("----T2:FinishCompactionOutputFile:S1:%f s\n",durations[30]);
-    printf("----T2:FinishCompactionOutputFile:delete:%f s\n",durations[31]);
-    printf("----T2:FinishCompactionOutputFile:sync:%f s\n",durations[32]);
-    printf("----T2:FinishCompactionOutputFile:close:%f s\n",durations[33]);
-    printf("In db_impl.cc, int, in Write ,log total time:%f s\n",durations[3]);
-    printf("In db_impl.cc, int, in Write ,log sync total time:%f s\n",durations[5]);
-    printf("In db_impl.cc, int, in Write ,mem total time:%f s\n",durations[4]);
-
-    printf("In db_impl.cc, int, in Write ,flash_write time:%f s\n",durations[6]);
-    */
+        
+    s = db_->Write(write_options_, &batch);
+      
+    ops++;
+    if(0 == ops%FLAGS_stats_interval) {
+      clock_gettime(CLOCK_MONOTONIC, &stage); 
+      double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
+      
+      //printf("ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name),get_fly(),  get_sst_num());
+      //fprintf(stats_log_,"ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name), get_fly(),  get_sst_num());
+      // int *num_in_levels=(int*)arg;
+      // int sequence=0;
+      PrintStats("leveldb.sstables");
+    }
+        
+    if (!s.ok()) {
+      fprintf(stderr, " I am db_bench.cc,  do write, put error: %s\n", s.ToString().c_str());
+      printf("I am db_bench.cc, i=%ld\n",i);
+      //s=Status::OK();
+      exit(1);
+    }
   }
+
+  fclose(stats_log_);
+  printf("write finished\n");
+  printf("I am db_bench.cc, i=%ld\n", i);
+  thread->stats.AddBytes(bytes);
+  //print_write_tail();
+
+  //clock_gettime(CLOCK_MONOTONIC,&end); //begin insert , so begin counting
+  //duration=( (int)end.tv_sec+((double)end.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
+
+  //printf(">>>>>>\n");
+  //printf("DoWrite total time: %f s\n",duration);
+  // printf("In db_bench.cc,write_total: %llu\n",write_total);
+  // printf("In db_bench.cc,write_total_log: %llu\n",write_total_log);
+  // printf("In db_bench.cc,block layer thoughput: %.2f\n",(double)write_total/duration/1024/1024);
+  // printf("<<<<<<<<<<\n");
+  // printf("In envposix, Sync-sync time: %f s\n",durations[35]);
+  // printf("In envposix, Sync-counter time: %f s\n",durations[36]);
+  // printf("In db_impl.cc, int, in Write ,mem total time: %f s\n",durations[4]);
+  // printf("In db_impl.cc, int, in Write ,makeroom total time: %f s\n",durations[2]);
+  // printf("In db_impl.cc, int, in Write ,log total time: %f s\n",durations[3]);
+
+  // printf("In db_impl.cc, write_total time:%f s\n",durations[1]);
+
+  // printf("In db_impl.cc, finish compaction 1:%f\n",durations[40]);
+  // printf("In db_impl.cc, finish compaction 2:%f\n",durations[41]);
+  // printf("In db_impl.cc, finish compaction 3:%f\n",durations[42]);
+  // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
+
+  // printf("----DoCompactionWork:%f s\n",durations[19]);
+  // printf("Total	write_total	makeroom	log	mem	back	sync\n");
+  // printf("%f	%f	%f	%f	%f	%f	%f\n",duration,durations[1],durations[2],durations[3],durations[4], durations[43],durations[35]);
+  
+  // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
+  // printf("In db_impl.cc, back compaction call:%f\n",durations[71]);
+  // printf("In db_impl.cc, do compaction call:%f\n",durations[72]);
+  /*
+  printf("In db_impl.cc, write total time:%f s\n",durations[1]);
+  printf("In db_impl.cc, int, in Write ,MakeRoomForWrite total time:%f s\n",durations[2]);
+  printf("----MakeRoomForWrite2:%f s\n",durations[10]);
+  printf("----while:%f s\n",durations[14]);
+  printf("----if1:%f s\n",durations[15]);
+  printf("----blank:%f s\n",durations[16]);
+  printf("----wait1:%f s\n",durations[13]);
+  printf("----wait2:%f s\n",durations[12]);
+  printf("----NewWritableFile:%f s\n",durations[11]);
+  printf("----sleep:%f s\n",durations[9]);
+  printf("----before MaybeScheduleCompaction:%f s\n",durations[8]);
+  printf("----MaybeScheduleCompaction:%f s\n",durations[7]);
+
+  printf("----BackgroundCompaction:%f s\n",durations[17]);
+  printf("----CompactMemTable:%f s\n",durations[18]);
+  printf("----DoCompactionWork:%f s\n",durations[19]);
+  printf("----DoCompactionWork,Ndrop:%f s\n",durations[20]);
+  printf("----DoCompactionWork,Ndrop:Add:%f s\n",durations[21]);
+  printf("In envposix, Flush time:%f s\n",durations[34]);
+  printf("In envposix, Sync-Flush time:%f s\n",durations[36]);
+  printf("In envposix, Sync-sync time:%f s\n",durations[35]);
+  printf("----DoCompactionWork,Ndrop:T0:%f s\n",durations[24]);
+  printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile1:%f s\n",durations[25]);
+  printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile2:%f s\n",durations[26]);
+  printf("----open_file:%f s\n",durations[27]);
+  printf("----acess:%f s\n",durations[29]);
+  printf("----create_entry:%f s\n",durations[28]);
+  printf("----DoCompactionWork,Ndrop:T1:%f s\n",durations[22]);
+  printf("----DoCompactionWork,Ndrop:T2:%f s\n",durations[23]);
+  printf("----T2:FinishCompactionOutputFile:S1:%f s\n",durations[30]);
+  printf("----T2:FinishCompactionOutputFile:delete:%f s\n",durations[31]);
+  printf("----T2:FinishCompactionOutputFile:sync:%f s\n",durations[32]);
+  printf("----T2:FinishCompactionOutputFile:close:%f s\n",durations[33]);
+  printf("In db_impl.cc, int, in Write ,log total time:%f s\n",durations[3]);
+  printf("In db_impl.cc, int, in Write ,log sync total time:%f s\n",durations[5]);
+  printf("In db_impl.cc, int, in Write ,mem total time:%f s\n",durations[4]);
+
+  printf("In db_impl.cc, int, in Write ,flash_write time:%f s\n",durations[6]);
+  */
+}
 
   void ReadSequential(ThreadState* thread) {
     Iterator* iter = db_->NewIterator(ReadOptions());
     int i = 0;
     int64_t bytes = 0;
-	  clock_gettime(CLOCK_MONOTONIC,&begin); 
     for (iter->SeekToFirst(); i < reads_ && iter->Valid(); iter->Next()) {
       bytes += iter->key().size() + iter->value().size();
       //thread->stats.FinishedSingleOp();
       ++i;
-	  
-	  if(i%(reads_/10)==0){
-		clock_gettime(CLOCK_MONOTONIC,&end); //begin insert , so begin counting
-		double duration=( (int)end.tv_sec+((double)end.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-		printf("i=%d,time=%f\n",i,duration);
-	  }
+      //fprintf(stats_log_, "key: %s \n", iter->key());
     }
     delete iter;
     thread->stats.AddBytes(bytes);
-	sleep(1);
   }
 
   void ReadReverse(ThreadState* thread) {
@@ -1521,53 +1482,99 @@ void print_write_tail(){
     delete iter;
     thread->stats.AddBytes(bytes);
   }
-
-
  
 void ReadRandom(ThreadState* thread) {
-	  //printf("I am db_bench.cc, ReadRandom, begin\n");
-	// printf("db_bench, ReadRandom, sst_total=%d\n", get_sst_num());
-	  // for(int lev=0;lev<=getLevel();lev++){
-		// printf("db_bench,ReadRandom,lev=%d,sst=%d\n",lev, get_ssst_num_in_lev(lev));
-	  
-	  // }
-	  //exit(9);
-    ReadOptions options;
-    std::string value;
-    int found = 0;
+  ReadOptions options;
+  std::string value;
+  int found = 0;
 	
-//*******give each thread an identifier.
+  //*******give each thread an identifier.
 	int loc_counter;//local thread identifier
 	int lock_res= pthread_mutex_lock(&thread_counter_lock);
-		if(lock_res!=0){
-			printf("db_bench, ReadRandom,lock_res=%d\n",lock_res);
-			exit(9);
-		}
-	
-	
-		tcounter++;
-		//printf("db_bench, readrandom, tcounter=%d\n",tcounter);
-		
-		if(tcounter==1){
-			printf("db_bench, readranom, invoke the thread pool\n");
-			db_->Get(options, "0", &value).ok();//Invoke to create the thead pool.
-			sleep(1);
-			printf("db_bench, readranom, invoke the thread pool, done---------------------\n\n\n\n");
-			
-		}
-		//printf("db_bench, readrandom, tcounter=%d\n",tcounter);
+  if(lock_res!=0) {
+    printf("db_bench, ReadRandom,lock_res=%d\n",lock_res);
+    exit(9);
+  }
 
-		loc_counter=tcounter;
-		
-		//printf("db_bench, readrandom, loc_counter=%d, begin sleep\n",loc_counter);
+  tcounter++;
+  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
+  
+  if(tcounter==1) {
+    printf("db_bench, readranom, invoke the thread pool\n");
+    db_->Get(options, "0", &value).ok();//Invoke to create the thead pool.
+    sleep(1);
+    printf("db_bench, readranom, invoke the thread pool, done---------------------\n\n\n\n");
+  }
+  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
 
+  loc_counter=tcounter;
+  //printf("db_bench, readrandom, loc_counter=%d, begin sleep\n",loc_counter);
 	pthread_mutex_unlock(&thread_counter_lock);
-//*******give each thread an identifier.
+  //*******give each thread an identifier.
+	
+  for (int i = 0; i < reads_; i++) {
+    char key[100];
+		const int k = thread->rand.Next() % FLAGS_num;
+    snprintf(key, sizeof(key), "%016d", k);
+    if (db_->Get(options, key, &value).ok()) {
+      fprintf(stats_log_, "ReadRandom Found key: %s", k);
+      found++;
+    } else {
+      fprintf(stats_log_, "ReadRandom NotFound key: %s", k);
+	  }
+	  
+	  if( i%10==0 &&i!=0){//(reads_/10)
+			clock_gettime(CLOCK_MONOTONIC,&stage); //begin insert , so begin counting
+			double duration=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
+			if(i%10000==0){//print in the screen, should be less frequent.
+					//printf("front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
+			// fprintf(recorder,"front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
+			// fflush(recorder);
+			}
+	  }
+      //thread->stats.FinishedSingleOp();
+  }
+	
+	clock_gettime(CLOCK_MONOTONIC,&stage);
+	double duration=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
+	printf("db_bench,readrandom, finish, dur=%f s, th=%d\n",loc_counter, duration);
+	
+  char msg[100];
+  snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
+  thread->stats.AddMessage(msg);
+	//sleep(4);
+#if 0
+  ReadOptions options;
+  std::string value;
+  int found = 0;
+	
+  //*******give each thread an identifier.
+	int loc_counter;//local thread identifier
+	int lock_res= pthread_mutex_lock(&thread_counter_lock);
+  if(lock_res!=0) {
+    printf("db_bench, ReadRandom,lock_res=%d\n",lock_res);
+    exit(9);
+  }
+
+  tcounter++;
+  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
+  
+  if(tcounter==1) {
+    printf("db_bench, readranom, invoke the thread pool\n");
+    db_->Get(options, "0", &value).ok();//Invoke to create the thead pool.
+    sleep(1);
+    printf("db_bench, readranom, invoke the thread pool, done---------------------\n\n\n\n");
+  }
+  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
+
+  loc_counter=tcounter;
+  //printf("db_bench, readrandom, loc_counter=%d, begin sleep\n",loc_counter);
+	pthread_mutex_unlock(&thread_counter_lock);
+  //*******give each thread an identifier.
 	
 	clock_gettime(CLOCK_MONOTONIC,&begin); 
     for (int i = 0; i < reads_; i++) {
       char key[100];
-	  
 	  int next_rand=thread->rand.Next();
 		
 		//const int k = next_rand % FLAGS_num;//I change this 
@@ -1607,6 +1614,7 @@ void ReadRandom(ThreadState* thread) {
     snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
     thread->stats.AddMessage(msg);
 	//sleep(4);
+#endif
   }
 
   void ReadMissing(ThreadState* thread) {
@@ -1637,7 +1645,6 @@ void ReadRandom(ThreadState* thread) {
   void SeekRandom(ThreadState* thread) {
     ReadOptions options;
     int found = 0;
-	clock_gettime(CLOCK_MONOTONIC,&begin);
     for (int i = 0; i < reads_; i++) {
       Iterator* iter = db_->NewIterator(options);
       char key[100];

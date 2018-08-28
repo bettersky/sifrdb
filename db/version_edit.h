@@ -34,29 +34,13 @@ struct LogicalMetaData {
 	InternalKey smallest;       // Smallest internal key served by table
 	InternalKey largest;        // Largest internal key served by table
 
-	//std::vector< std::pair<int, PhysicalMetaData> > physical_files;
 	std::vector<PhysicalMetaData> physical_files;
 
 	void AppendPhysicalFile(PhysicalMetaData &f);
-	// void AppendPhysicalFile(PhysicalMetaData &f) {
-		// if(physical_files.size()==0){
-			// smallest=f.smallest;
-			// largest=f.smallest;
-		// }
-		// else{
-			// //largest=f.smallest; //this is a bug
-			// largest=f.largest;
-		// }
-
-		// file_size+= f.file_size;
-		// physical_files.push_back( f );
-	// }
 
 	LogicalMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { 
 		physical_files.clear();
 	}
-
-
 };
 
 class VersionEdit {
@@ -93,7 +77,7 @@ class VersionEdit {
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
-	void AddLogicalFile(int level, const LogicalMetaData &logical_f){
+	void AddLogicalFile(int level, const LogicalMetaData &logical_f) {
 		//level_of_new_logical_file=level;
 		
 		//new_logical_file=logical_f;
