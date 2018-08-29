@@ -66,80 +66,51 @@ void LogicalMetaData::AppendPhysicalFile(PhysicalMetaData &f) {
 }
 
 void VersionEdit::EncodeTo(std::string* dst) const {
-	//printf("version_edit.cc, EncodeTo, begin, dst=%s\n",dst->c_str());
   if (has_comparator_) {
-	//printf("version_edit.cc, EncodeTo, has_comparator_\n");
     PutVarint32(dst, kComparator);
     PutLengthPrefixedSlice(dst, comparator_);
   }
   if (has_log_number_) {
-		//printf("version_edit.cc, EncodeTo, has_log_number_\n");
-
     PutVarint32(dst, kLogNumber);
     PutVarint64(dst, log_number_);
   }
   if (has_prev_log_number_) {
-		//printf("version_edit.cc, EncodeTo, has_prev_log_number_\n");
-
     PutVarint32(dst, kPrevLogNumber);
     PutVarint64(dst, prev_log_number_);
   }
   if (has_next_file_number_) {
-		//rintf("version_edit.cc, EncodeTo, has_next_file_number_\n");
-
     PutVarint32(dst, kNextFileNumber);
     PutVarint64(dst, next_file_number_);
   }
   if (has_last_sequence_) {
-		//printf("version_edit.cc, EncodeTo, has_last_sequence_\n");
-
     PutVarint32(dst, kLastSequence);
     PutVarint64(dst, last_sequence_);
   }
 
   for (size_t i = 0; i < compact_pointers_.size(); i++) {
-		//printf("version_edit.cc, EncodeTo,  compact_pointers_.size()=%d\n", compact_pointers_.size());
-
     PutVarint32(dst, kCompactPointer);
     PutVarint32(dst, compact_pointers_[i].first);  // level
     PutLengthPrefixedSlice(dst, compact_pointers_[i].second.Encode());// InternalKey
   }
-
-  // for (DeletedFileSet::const_iterator iter = deleted_files_.begin();
-       // iter != deleted_files_.end();
-       // ++iter) {
-    // PutVarint32(dst, kDeletedFile);
-    // PutVarint32(dst, iter->first);   // level
-    // PutVarint64(dst, iter->second);  // file number
-  // }
- //*** encode deleted physical files  
-   for (DeletedPhysicalFileSet::const_iterator iter = deleted_physical_files_.begin();iter != deleted_physical_files_.end();++iter) {
+  
+  //*** encode deleted physical files  
+  for (DeletedPhysicalFileSet::const_iterator iter = deleted_physical_files_.begin();
+       iter != deleted_physical_files_.end(); ++iter) {
 		//printf("version_edit.cc, EncodeTo, DeletedPhysicalFileSet\n");
 		PutVarint32(dst, kDeletedPhysicalFile);
 		//PutVarint32(dst, iter->first);   // level  //no level
 		PutVarint64(dst, *iter);  // physical file number
 	}
 	
-//*** encode deleted logical files     
-   for (DeletedLogicalFileSet::const_iterator iter = deleted_logical_files_.begin();iter != deleted_logical_files_.end();++iter) {
-	//printf("version_edit.cc, EncodeTo, DeletedLogicalFileSet\n");
-		PutVarint32(dst, kDeletedLogicalFile);
-		PutVarint32(dst, iter->first);   // level  
-		PutVarint64(dst, iter->second);  // logical file number
+  //*** encode deleted logical files     
+  for (DeletedLogicalFileSet::const_iterator iter = deleted_logical_files_.begin();
+       iter != deleted_logical_files_.end(); ++iter) {
+    //printf("version_edit.cc, EncodeTo, DeletedLogicalFileSet\n");
+    PutVarint32(dst, kDeletedLogicalFile);
+    PutVarint32(dst, iter->first);   // level  
+    PutVarint64(dst, iter->second);  // logical file number
 	}
 	
-/************tomb*******************************************************************************************/
-  // for (size_t i = 0; i < new_files_.size(); i++) {
-    // const FileMetaData& f = new_files_[i].second;
-    // PutVarint32(dst, kNewFile);
-    // PutVarint32(dst, new_files_[i].first);  // level
-    // PutVarint64(dst, f.number);
-    // PutVarint64(dst, f.file_size);
-    // PutLengthPrefixedSlice(dst, f.smallest.Encode());
-    // PutLengthPrefixedSlice(dst, f.largest.Encode());
-  // }
-/************tomb*******************************************************************************************/
-
 	for (size_t i = 0; i < new_logical_files_.size(); i++) {
 		const LogicalMetaData& logical_f = new_logical_files_[i].second;
 		int level = new_logical_files_[i].first;
@@ -163,43 +134,8 @@ void VersionEdit::EncodeTo(std::string* dst) const {
 			PutVarint64(dst, f.file_size);
 			PutLengthPrefixedSlice(dst, f.smallest.Encode());
 			PutLengthPrefixedSlice(dst, f.largest.Encode());
-		
 		}
-		
-		
-	
 	}
-/************tomb2*******************************************************************************************/
-
-	// if( new_logical_file.physical_files.size()>0){
-		// //encode the logical tree number
-		 // PutVarint32(dst, kLogicalFile);
-		// //encode the level
-		// PutVarint64(dst, level_of_new_logical_file);//2017.6.7---this may be a bug, should be PutVarint32
-
-		// //endcode the logical tree meta
-		// PutVarint64(dst, new_logical_file.number);
-		// PutVarint64(dst, new_logical_file.file_size);
-		// PutLengthPrefixedSlice(dst, new_logical_file.smallest.Encode());
-		// PutLengthPrefixedSlice(dst, new_logical_file.largest.Encode());
-	// }
-
-
-	// //endcode the physical files
-	 // for (size_t i = 0; i < new_logical_file.physical_files.size(); i++) {
-				// //printf("version_edit.cc, EncodeTo, new_logical_file\n");
-
-		// const PhysicalMetaData& f = new_logical_file.physical_files[i];
-		// PutVarint32(dst, kPhysicalFile);
-		// //PutVarint32(dst, new_logical_file.physical_files[i].first);  // level
-		// PutVarint64(dst, f.number);
-		// PutVarint64(dst, f.file_size);
-		// PutLengthPrefixedSlice(dst, f.smallest.Encode());
-		// PutLengthPrefixedSlice(dst, f.largest.Encode());
-	// }
-/************tomb2*******************************************************************************************/
-
-	//printf("version_edit.cc, EncodeTo, end, dst=%s\n",dst->c_str());
 }
 
 static bool GetInternalKey(Slice* input, InternalKey* dst) {
@@ -374,7 +310,6 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
 					fprintf(stderr,"version_edit.cc, DecodeFrom,kPhysicalFile,err,icmp_->Compare(logical_f_pointer->smallest, logical_decoded_smallest)=%d\n",icmp_->Compare(logical_f_pointer->smallest, logical_decoded_smallest));
 					fprintf(stderr,"version_edit.cc, DecodeFrom,kPhysicalFile,err,icmp_->Compare(logical_f_pointer->largest, logical_decoded_largest)=%d\n",icmp_->Compare(logical_f_pointer->largest, logical_decoded_largest));
 					
-					
 					exit(9);
 				}
 				new_logical_files_.push_back(std::make_pair(level, *logical_f_pointer));
@@ -383,23 +318,6 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
 				//logical_f_pointer->physical_files.clear();				
 			}
 			break;
-
-			
-/************tomb*******************************************************************************************/
-
-      // case kNewFile:
-        // if (GetLevel(&input, &level) &&
-            // GetVarint64(&input, &f.number) &&
-            // GetVarint64(&input, &f.file_size) &&
-            // GetInternalKey(&input, &f.smallest) &&
-            // GetInternalKey(&input, &f.largest)) {
-          // new_files_.push_back(std::make_pair(level, f));
-        // } else {
-          // msg = "new-file entry";
-        // }
-        // break;
-/************tomb*******************************************************************************************/
-
       default:
         msg = "unknown tag";
         break;

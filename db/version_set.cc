@@ -1303,120 +1303,68 @@ class VersionSet::Builder {
   }
 
   // Apply all of the edits in *edit to the current state.
-  void Apply(VersionEdit* edit) {//edit contains added logical files and deleted logical files
-    // Update compaction pointers
-    // for (size_t i = 0; i < edit->compact_pointers_.size(); i++) {//we may not need this 
-      // const int level = edit->compact_pointers_[i].first;
-      // vset_->compact_pointer_[level] =
-          // edit->compact_pointers_[i].second.Encode().ToString();
-    // }
-
+  //  edit contains added logical files and deleted logical files
+  void Apply(VersionEdit* edit) {   
     // Delete files
-	//printf("version_set,builder,Apply, begin\n");
     const VersionEdit::DeletedLogicalFileSet& del = edit->deleted_logical_files_;
-    for (VersionEdit::DeletedLogicalFileSet::const_iterator iter = del.begin();iter != del.end(); ++iter) {
+    for (VersionEdit::DeletedLogicalFileSet::const_iterator iter = del.begin();
+         iter != del.end(); ++iter) {
       const int level = iter->first;
       const uint64_t number = iter->second;
       levels_[level].deleted_files.insert(number);
-	  //printf("version_set, apply, delete number=%d\n",number);
     }
-	//printf("version_set,builder,Apply, 111111111111111\n");
 
     // Add new files
-	for(int i=0;i< edit->new_logical_files_.size(); i++){
-	
-	
-		const int level = edit->new_logical_files_[i].first;
-		
-		LogicalMetaData* f = new LogicalMetaData(edit->new_logical_files_[i].second); //why use new? The leveldb guys are realy clever
-		f->refs = 1;
-		f->allowed_seeks = (f->file_size / 16384);
-		if (f->allowed_seeks < 100) f->allowed_seeks = 100;
+	  for(int i = 0; i < edit->new_logical_files_.size(); i++) {
+      const int level = edit->new_logical_files_[i].first;
+      LogicalMetaData* f = new LogicalMetaData(edit->new_logical_files_[i].second); 
+      f->refs = 1;
 
-		levels_[level].deleted_files.erase(f->number);//erase to not delete the file
+      // We arrange to automatically compact this file after
+      // a certain number of seeks.  Let's assume:
+      //   (1) One seek costs 10ms
+      //   (2) Writing or reading 1MB costs 10ms (100MB/s)
+      //   (3) A compaction of 1MB does 25MB of IO:
+      //         1MB read from this level
+      //         10-12MB read from next level (boundaries may be misaligned)
+      //         10-12MB written to next level
+      // This implies that 25 seeks cost the same as the compaction
+      // of 1MB of data.  I.e., one seek costs approximately the
+      // same as the compaction of 40KB of data.  We are a little
+      // conservative and allow approximately one seek for every 16KB
+      // of data before triggering a compaction.
+      f->allowed_seeks = (f->file_size / 16384);
+      if (f->allowed_seeks < 100) f->allowed_seeks = 100;
 
-		levels_[level].added_files->insert(f);
-
+      levels_[level].deleted_files.erase(f->number);  //erase to not delete the file
+      levels_[level].added_files->insert(f);
 	}	
-	// if(edit->new_logical_file.physical_files.size()>0){
-		// const int level = edit->level_of_new_logical_file;
-		// LogicalMetaData* f = new LogicalMetaData(edit->new_logical_file); //why use new? The leveldb guys are realy clever
-		// f->refs = 1;
-		// f->allowed_seeks = (f->file_size / 16384);
-		// if (f->allowed_seeks < 100) f->allowed_seeks = 100;
-
-		// levels_[level].deleted_files.erase(f->number);//erase to not delete the file
-
-		// levels_[level].added_files->insert(f);
-
-	// }
-    // for (size_t i = 0; i < edit->new_files_.size(); i++) {
-      // const int level = edit->new_files_[i].first;
-      // FileMetaData* f = new FileMetaData(edit->new_files_[i].second);
-      // f->refs = 1;
-
-      // // We arrange to automatically compact this file after
-      // // a certain number of seeks.  Let's assume:
-      // //   (1) One seek costs 10ms
-      // //   (2) Writing or reading 1MB costs 10ms (100MB/s)
-      // //   (3) A compaction of 1MB does 25MB of IO:
-      // //         1MB read from this level
-      // //         10-12MB read from next level (boundaries may be misaligned)
-      // //         10-12MB written to next level
-      // // This implies that 25 seeks cost the same as the compaction
-      // // of 1MB of data.  I.e., one seek costs approximately the
-      // // same as the compaction of 40KB of data.  We are a little
-      // // conservative and allow approximately one seek for every 16KB
-      // // of data before triggering a compaction.
-      // f->allowed_seeks = (f->file_size / 16384);
-      // if (f->allowed_seeks < 100) f->allowed_seeks = 100;
-
-      // levels_[level].deleted_files.erase(f->number);
-      // levels_[level].added_files->insert(f);
-    // }
-  }
+}
 
   // Save the current state in *v.
   void SaveTo(Version* v) {
-	//printf("version_set,builder,SaveTo, begin\n");
     BySmallestKey cmp;
     cmp.internal_comparator = &vset_->icmp_;
     for (int level = 0; level < config::kNumLevels; level++) {//I think here is only one file of one level, so we can optimize it.
       // Merge the set of added files with the set of pre-existing files.
       // Drop any deleted files.  Store the result in *v.
-      const std::vector<LogicalMetaData*>& base_files = base_->logical_files_[level];//Version* base_;
+      const std::vector<LogicalMetaData*>& base_files = base_->logical_files_[level];
       std::vector<LogicalMetaData*>::const_iterator base_iter = base_files.begin();
       std::vector<LogicalMetaData*>::const_iterator base_end = base_files.end();
 	  
-      const FileSet* added = levels_[level].added_files;//FileSet* added_files; typedef std::set<LogicalMetaData*, BySmallestKey> FileSet;
+      const FileSet* added = levels_[level].added_files;
       v->logical_files_[level].reserve(base_files.size() + added->size());
-	  //add the base files
-	  for (; base_iter != base_end; ++base_iter) {
-         MaybeAddFile(v, level, *base_iter);
+      //add the base files TODO 
+      for (; base_iter != base_end; ++base_iter) {
+        MaybeAddFile(v, level, *base_iter);
       }
 	  
-	  //add the new file
-	  //assure that the size of added is 1.
-	for (FileSet::const_iterator added_iter = added->begin(); added_iter != added->end();++added_iter) {
-			//FileSet::const_iterator added_iter = added->begin();
-			MaybeAddFile(v, level, *added_iter);
-	}
-	  
-      // for (FileSet::const_iterator added_iter = added->begin();added_iter != added->end();++added_iter) {//add all the added files
-        // // Add all smaller files listed in base_
-        // for (std::vector<LogicalMetaData*>::const_iterator bpos = std::upper_bound(base_iter, base_end, *added_iter, cmp); base_iter != bpos; ++base_iter) {
-          // MaybeAddFile(v, level, *base_iter);
-        // }//we directly add, because logical files are not needed in order.
-
-        // MaybeAddFile(v, level, *added_iter);
-      // }
-
-      // // Add remaining base files
-       // for (; base_iter != base_end; ++base_iter) {
-         // MaybeAddFile(v, level, *base_iter);
-       // }
-	   
-	   
+      //add the new file
+      //assure that the size of added is 1.
+      for (FileSet::const_iterator added_iter = added->begin(); added_iter != added->end();++added_iter) {
+        //FileSet::const_iterator added_iter = added->begin();
+        MaybeAddFile(v, level, *added_iter);
+      }
 
 #ifndef NDEBUG
       // Make sure there is no overlap in levels > 0
@@ -1435,8 +1383,6 @@ class VersionSet::Builder {
       // }
 #endif
     }
-
-		//printf("version_set,builder,SaveTo, end\n");
   }
 
   void MaybeAddFile(Version* v, int level, LogicalMetaData* f) {
@@ -1444,11 +1390,6 @@ class VersionSet::Builder {
       // File is deleted: do nothing
     } else {
       std::vector<LogicalMetaData*>* files = &v->logical_files_[level];
-      // if (level > 0 && !files->empty()) {
-        // // Must not overlap
-        // assert(vset_->icmp_.Compare((*files)[files->size()-1]->largest,
-                                    // f->smallest) < 0);
-      // }
       f->refs++;
       files->push_back(f);
     }
@@ -2123,18 +2064,6 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   // Iterator* result = NewMergingIterator(&icmp_, list, num);
   // delete[] list;
   // return result;
-}
-
-//COMP_THRESH
-int VersionSet::Need_compact(int level) {
-  if(current_->logical_files_[level].size() < growth_factor) {
-    //the level need no compaction
-    return 0;
-  } else if(current_->logical_files_[level+1].size() >= growth_factor*1.5) {//the next level has no space
-    return 0;
-  } else {
-    return 1;
-  }
 }
 
 bool VersionSet::NeedsCompaction(bool* locked, int& level) {

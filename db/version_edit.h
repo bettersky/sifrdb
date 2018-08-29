@@ -14,7 +14,7 @@ namespace leveldb {
 
 class VersionSet;
 
-struct PhysicalMetaData {//
+struct PhysicalMetaData {
   int refs;
   int allowed_seeks;          // Seeks allowed until compaction
   uint64_t number;
@@ -80,29 +80,16 @@ class VersionEdit {
 	void AddLogicalFile(int level, const LogicalMetaData &logical_f) {
 		new_logical_files_.push_back(std::make_pair(level, logical_f));
 	}
-/************tomb*******************************************************************************************/
-  // void AddFile(int level, uint64_t file, //this will not in use
-               // uint64_t file_size,
-               // const InternalKey& smallest,
-               // const InternalKey& largest) {
-    // FileMetaData f;
-    // f.number = file;
-    // f.file_size = file_size;
-    // f.smallest = smallest;
-    // f.largest = largest;
-    // new_files_.push_back(std::make_pair(level, f));
-  // }
-/************tomb*******************************************************************************************/
+
   // Delete the specified "file" from the specified "level".
-  void DeletePhysicalFile(uint64_t file) {//physical file numbers
+  void DeletePhysicalFile(uint64_t file) {        // physical file number
     deleted_physical_files_.insert(file);
   }
   
-   void DeleteLogicalFile(int level, uint64_t file) { //physical file numbers
+  void DeleteLogicalFile(int level, uint64_t file) {  // physical file number
     deleted_logical_files_.insert(std::make_pair(level, file));
   }
 	
-
   void EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
 
@@ -114,7 +101,7 @@ class VersionEdit {
 	 //typedef std::set< std::pair<int, uint64_t> > DeletedFileSet;
   typedef std::set< uint64_t> DeletedPhysicalFileSet;
   
-   typedef std::set< std::pair<int, uint64_t> > DeletedLogicalFileSet;
+  typedef std::set< std::pair<int, uint64_t> > DeletedLogicalFileSet;
 
   std::string comparator_;
   uint64_t log_number_;// log file is physical
@@ -131,15 +118,6 @@ class VersionEdit {
   
   DeletedPhysicalFileSet deleted_physical_files_;
   DeletedLogicalFileSet deleted_logical_files_;
-/************tomb*******************************************************************************************/
-	//this is moved to new_logical_tree
-  //std::vector< std::pair<int, FileMetaData> > new_files_;
-/************tomb*******************************************************************************************/
-		
-	//int level_of_new_logical_file;	
-	//LogicalMetaData new_logical_file;//only one new tree in logical mode.
-	//std::pair<int, LogicalMetaData> new_logical_file;
-	
 	std::vector< std::pair<int, LogicalMetaData> > new_logical_files_;
 };
 

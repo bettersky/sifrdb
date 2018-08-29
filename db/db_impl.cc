@@ -1365,7 +1365,6 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
-
 Status DBImpl::MakeRoomForWrite(bool force) {
   mutex_.AssertHeld();
   assert(!writers_.empty());
@@ -1539,7 +1538,6 @@ Status DB::Open(const Options& options, const std::string& dbname,
   VersionEdit edit;
   
   Status s = impl->Recover(&edit); // Handles create_if_missing, error_if_exists
-  
   if (s.ok()) {
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;
@@ -1551,13 +1549,9 @@ Status DB::Open(const Options& options, const std::string& dbname,
       impl->logfile_number_ = new_log_number;
       impl->log_ = new log::Writer(lfile);
       s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
-      printf("dbimpl, open, after LogAndApply\n");
-      //exit(9);
     }
     if (s.ok()) {
-		  printf("impl, open, before DeleteObsoleteFiles\n");
       impl->DeleteObsoleteFiles();
-      //impl->MaybeScheduleCompaction();
     }
   }
   impl->pending_outputs_.clear();
