@@ -78,14 +78,6 @@ class VersionEdit {
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
 	void AddLogicalFile(int level, const LogicalMetaData &logical_f) {
-		//level_of_new_logical_file=level;
-		
-		//new_logical_file=logical_f;
-		// new_logical_file.number = file;
-		// new_logical_file.file_size = file_size;
-		// new_logical_file.smallest = smallest;
-		// new_logical_file.largest = largest;
-		
 		new_logical_files_.push_back(std::make_pair(level, logical_f));
 	}
 /************tomb*******************************************************************************************/
@@ -106,7 +98,7 @@ class VersionEdit {
     deleted_physical_files_.insert(file);
   }
   
-   void DeleteLogicalFile(int level, uint64_t file) {//physical file numbers
+   void DeleteLogicalFile(int level, uint64_t file) { //physical file numbers
     deleted_logical_files_.insert(std::make_pair(level, file));
   }
 	

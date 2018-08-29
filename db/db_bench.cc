@@ -1360,7 +1360,7 @@ void DoWrite(ThreadState* thread, bool seq) {
     s = db_->Write(write_options_, &batch);
       
     ops++;
-    if(0 == ops%FLAGS_stats_interval) {
+    if(0 == ops % FLAGS_stats_interval) {
       clock_gettime(CLOCK_MONOTONIC, &stage); 
       double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
       

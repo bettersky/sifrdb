@@ -55,7 +55,6 @@ struct DBImpl::Writer {
 struct DBImpl::CompactionState {
   Compaction* const compaction;
 
-  std::vector<PhysicalMetaData*> current_group;//
   // Sequence numbers < smallest_snapshot are not significant since we
   // will never have to service a snapshot below smallest_snapshot.
   // Therefore if we have seen a sequence number S <= smallest_snapshot,
@@ -258,15 +257,12 @@ void DBImpl::DeleteObsoleteFiles() {
     // or may not have been committed, so we cannot safely garbage collect.
     return;
   }
-	//printf("dbimpl, DeleteObsoleteFiles begin\n");
   // Make a set of all of the live files
   std::set<uint64_t> live = pending_outputs_;
-	//printf("dbimpl, DeleteObsoleteFiles, pending_outputs_.size=%d\n",pending_outputs_.size());
   versions_->AddLiveFiles(&live);
 
   std::vector<std::string> filenames;
   env_->GetChildren(dbname_, &filenames); // Ignoring errors on purpose
-  //printf("dbimpl, DeleteObsoleteFiles, filenames.size=%d\n", filenames.size());
   uint64_t number;
   FileType type;
   for (size_t i = 0; i < filenames.size(); i++) {
@@ -304,12 +300,6 @@ void DBImpl::DeleteObsoleteFiles() {
         Log(options_.info_log, "Delete type=%d #%lld\n",
             int(type),
             static_cast<unsigned long long>(number));
-		//printf("dbimpl, DeleteObsoleteFiles, do delete, filenames=%s\n",(dbname_ + "/" + filenames[i]).c_str());
-		//if(filenames[i].find("ldb")!=-1){
-			//printf("dbimpl, DeleteObsoleteFiles, do delete, filenames=%s\n",(dbname_ + "/" + filenames[i]).c_str());
-
-			//exit(9);
-		//}
         env_->DeleteFile(dbname_ + "/" + filenames[i]);
       }
     }
@@ -499,52 +489,51 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
 
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
-	  mutex_.AssertHeld();
-	  const uint64_t start_micros = env_->NowMicros();
-	  //FileMetaData meta;
-		PhysicalMetaData physical_meta;
-		LogicalMetaData logical_meta;
-		
-		logical_meta.number = versions_->NewFileNumber();
-		physical_meta.number = versions_->NewFileNumber();
-	  
-	  pending_outputs_.insert(physical_meta.number);//this is a interesting thing needs to be reviewed.
-	  Iterator* iter = mem->NewIterator();
-	  Status s;
-	  {
-      mutex_.Unlock();
-      
-      s = BuildTable(dbname_, env_, options_, table_cache_, iter, &physical_meta);
-      mutex_.Lock();
-	  }
+  mutex_.AssertHeld();
+  const uint64_t start_micros = env_->NowMicros();
+  PhysicalMetaData physical_meta;
+  LogicalMetaData logical_meta;
+  
+  logical_meta.number = versions_->NewFileNumber();
+  physical_meta.number = versions_->NewFileNumber();
+  
+  pending_outputs_.insert(physical_meta.number);  //this is a interesting thing needs to be reviewed.
+  Iterator* iter = mem->NewIterator();
+  Log(options_.info_log, "Level-0 Logical #%llu table #%llu: started",
+    (unsigned long long) logical_meta.number,
+    (unsigned long long) physical_meta.number);
 
-	  delete iter;
-	  pending_outputs_.erase(physical_meta.number);//
+  Status s;
+  {
+    mutex_.Unlock();
+    
+    s = BuildTable(dbname_, env_, options_, table_cache_, iter, &physical_meta);
+    mutex_.Lock();
+  }
 
+  Log(options_.info_log, "Level-0 Logical #%llu table #%llu: %lld bytes %s",
+    (unsigned long long) logical_meta.number,
+    (unsigned long long) physical_meta.number,
+    (unsigned long long) physical_meta.file_size,
+    s.ToString().c_str());
+  delete iter;
+  pending_outputs_.erase(physical_meta.number); //
 
-	  // Note that if file_size is zero, the file has been deleted and
-	  // should not be added to the manifest.
-				//but why the file is deleted?
-	  int level = 0;
-		logical_meta.AppendPhysicalFile(physical_meta);//add to logical file.
+  // Note that if file_size is zero, the file has been deleted and
+  // should not be added to the manifest.
+      //but why the file is deleted?
+  int level = 0;
+  logical_meta.AppendPhysicalFile(physical_meta); //add to logical file.
 
-	  if (s.ok() && logical_meta.file_size > 0) {
-		//const Slice min_user_key = logical_meta.smallest.user_key();
-		//const Slice max_user_key = logical_meta.largest.user_key();
-		//if (base != NULL) {
-		  //level = base->PickLevelForMemTableOutput(min_user_key, max_user_key); //我们不深推
-		//}
-		//edit->AddFile(level, logical_meta.number, logical_meta.file_size,
-					  //logical_meta.smallest, logical_meta.largest);
-			edit->AddLogicalFile(level, logical_meta);
-	  }
+  if (s.ok() && logical_meta.file_size > 0) {
+    edit->AddLogicalFile(level, logical_meta);
+  }
 
-	  CompactionStats stats;
-	  stats.micros = env_->NowMicros() - start_micros;
-	  stats.bytes_written = logical_meta.file_size;
-	  stats_[level].Add(stats);
-	  
-	  return s;
+  CompactionStats stats;
+  stats.micros = env_->NowMicros() - start_micros;
+  stats.bytes_written = logical_meta.file_size;
+  stats_[level].Add(stats);
+  return s;
 }
 
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {//blank
@@ -660,7 +649,6 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
 
   // Make the output file
   std::string fname = TableFileName(dbname_, file_number);
-  //printf("OpenCompactionOutputFile, fname=%s\n",fname.c_str());
   Status s = env_->NewWritableFile(fname, &compact->outfile);
   if (s.ok()) {
     compact->builder = new TableBuilder(options_, compact->outfile);
@@ -731,83 +719,53 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
 
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
-  
-	bg_cv_.SignalAll();  // Wakeup MakeRoomForWrite() if necessary
+  Log(options_.info_log,  "Compacted level: %d Logical %d =>  file: %d %lld bytes",
+      compact->compaction->level(),
+      compact->compaction->logical_files_inputs_.size(),
+      compact->outputs.size(),
+      static_cast<long long>(compact->total_bytes));
 
   // Add compaction outputs
   compact->compaction->AddInputDeletions(compact->compaction->edit());
   const int level = compact->compaction->level();
-	
-  // for (size_t i = 0; i < compact->outputs.size(); i++) {
-    // const CompactionState::Output& out = compact->outputs[i];
-    // compact->compaction->edit()->AddFile(
-        // level + 1,
-        // out.number, out.file_size, out.smallest, out.largest);
-  // }
-		const LogicalMetaData& out= compact->output_logical_file;
+  const LogicalMetaData& out= compact->output_logical_file;
 
-	 compact->compaction->edit()->AddLogicalFile(level+1, out);
+  compact->compaction->edit()->AddLogicalFile(level+1, out);
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
 }
 
 Status DBImpl::Conca_merge(CompactionState* compact) {
  	Status status;
-	//printf("dbimpl, Conca_merge, begin, level-------------%d--------------------\n", compact->compaction->level());
 	Iterator* input = versions_->MakeInputIterator_conca(compact->compaction);
-	// for(int i=0;i<compact->compaction->logical_files_inputs_.size();i++) {
-		// printf("	i=%d, partici logical number=%d. phys ",i, compact->compaction->logical_files_inputs_[i]->number);
-			// for(int j=0;j< compact->compaction->logical_files_inputs_[i]->physical_files.size();j++){
-				// printf("%d ",compact->compaction->logical_files_inputs_[i]->physical_files[j].number);
-			// }
-			// printf("\n");
-	
-	// }
 	input->SeekToFirst();
 	
 	ParsedInternalKey ikey;
-	std::string current_user_key;//actually used as the previous key
-	bool has_current_user_key = false;//use to indicate for the first key
-	SequenceNumber last_sequence_for_key = kMaxSequenceNumber;//static const SequenceNumber kMaxSequenceNumber =  ((0x1ull << 56) - 1);
+	std::string current_user_key;       //actually used as the previous key
+	bool has_current_user_key = false;  //use to indicate for the first key
+	SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
 
-	// printf("key=%s\n",input->key().data());
-  // for(int i=0;i<10;i++){
-	// printf("key=%s\n",input->key().data());
-	// input->Next(); 
-  // }
-  // exit(9);
 	int counter=0;
 	int level=compact->compaction->level();
 	fly[level]=0;
 	
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     counter++;
-    //printf("dbimpl.cc, input is valid----------------------------------\n");
-    if(input->isNewSST()){//determine if the current_ is a new sst.
-      //printf("dbimpl.cc, isNewSST is 1\n");
-    
-      if(input->isOverlapped()==0){//no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
-        printf("dbimpl.cc, isOverlapped is 0\n");
-
+    //determine if the current_ is a new sst.
+    if(input->isNewSST()) {
+      if(input->isOverlapped()==0){
+        //no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
         const void *arg;//
         input->get_sst_meta(&arg);
-        
         PhysicalMetaData *phy_file= (PhysicalMetaData*)arg;
-        //printf("dbimpl.cc, tttt, file number=%d,size=%d, new logical number=%d\n", phy_file->number, phy_file->file_size,compact->output_logical_file.number);
-        //input->isNewSST();
-        FinishCompactionOutputFile(compact, input);
-        
-        //printf("dbimpl.cc, tttt, small=%s,size=%d,large=%s\n",phy_file->smallest.user_key().data(), phy_file->file_size,phy_file->largest.user_key().data());
+        // TODO : seqwrite bug??? 
+        //FinishCompactionOutputFile(compact, input);
+        // old level 的 sstable  如何删除 ?? 
         compact->output_logical_file.AppendPhysicalFile(*phy_file);
-        
         input->next_sst();
-        //printf("dbimpl.cc,Conca_merge,next_sst end\n");
-        //exit(9);
         continue;
       }
     }
     
-    //printf("dbimpl.cc,Conca_merge,exit\n");
-    //exit(9);
     Slice key = input->key();
 
     // Handle key/value, add to state, etc.
@@ -820,26 +778,28 @@ Status DBImpl::Conca_merge(CompactionState* compact) {
     } else {
       if (!has_current_user_key ||
         user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
-      // First occurrence of this user key
-      current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
-      has_current_user_key = true;
-      last_sequence_for_key = kMaxSequenceNumber;
+        // First occurrence of this user key
+        current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
+        has_current_user_key = true;
+        last_sequence_for_key = kMaxSequenceNumber;
       }
 
       if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
-      // Hidden by an newer entry for same user key
-      drop = true;    // (A)
+        // Hidden by an newer entry for same user key
+        drop = true;    // (A)
       } else if (ikey.type == kTypeDeletion &&
             ikey.sequence <= compact->smallest_snapshot &&
-            compact->compaction->IsBaseLevelForKey(ikey.user_key)) {//decide that there is no key entry in other levels needing to be supported by this deletion marker. That is, this level is the keys last level, or base level
-      // For this user key:
-      // (1) there is no data in higher levels
-      // (2) data in lower levels will have larger sequence numbers
-      // (3) data in layers that are being compacted here and have
-      //     smaller sequence numbers will be dropped in the next
-      //     few iterations of this loop (by rule (A) above).
-      // Therefore this deletion marker is obsolete and can be dropped.
-      drop = true;
+            compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+        // Decide that there is no key entry in other levels needing to be supported by this deletion marker. 
+        //  That is, this level is the keys last level, or base level
+        // For this user key:
+        // (1) there is no data in higher levels
+        // (2) data in lower levels will have larger sequence numbers
+        // (3) data in layers that are being compacted here and have
+        //     smaller sequence numbers will be dropped in the next
+        //     few iterations of this loop (by rule (A) above).
+        // Therefore this deletion marker is obsolete and can be dropped.
+        drop = true;
       }
 
       last_sequence_for_key = ikey.sequence;
@@ -854,39 +814,34 @@ Status DBImpl::Conca_merge(CompactionState* compact) {
         }
       }
       if (compact->builder->NumEntries() == 0) {
-      compact->current_output()->smallest.DecodeFrom(key);
+        compact->current_output()->smallest.DecodeFrom(key);
       }
       compact->current_output()->largest.DecodeFrom(key);
       compact->builder->Add(key, input->value());
 
       // Close output file if it is big enough
-      //printf("dbimpl, compact->compaction->MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-      if (compact->builder->FileSize() >= compact->compaction->MaxOutputFileSize()) {
-
-        //printf("dbimpl, before FinishCompactionOutputFile,counter=%d\n",counter);
-        //printf("dbimpl, before FinishCompactionOutputFile,MaxOutputFileSize()=%d\n",compact->compaction->MaxOutputFileSize());
-        //exit(9);
-        
+      if (compact->builder->FileSize() >=
+          compact->compaction->MaxOutputFileSize()) {
         status = FinishCompactionOutputFile(compact, input);
-        
         fly[level]++;
-        
         if (!status.ok()) {
           break;
         }
       }
-
     }
 
     input->Next();
-}
-	
-	//printf("dbimpl.cc, Conca_merge, finish\n");
+  }
 
+  if (status.ok() && shutting_down_.Acquire_Load()) {
+    status = Status::IOError("Deleting DB during compaction");
+  }
 	if(status.ok() && compact->builder != NULL){
-		status =FinishCompactionOutputFile(compact, input);//store the last physicl file of this group
+		status = FinishCompactionOutputFile(compact, input);  //store the last physicl file of this group
 	}
-	
+	if (status.ok()) {
+    status = input->status();
+  }
 	delete input;
 	input = NULL;
 	fly[level]=0;
@@ -895,14 +850,17 @@ Status DBImpl::Conca_merge(CompactionState* compact) {
 }
 
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
-  printf("dbimpl.cc, DoCompactionWork, begin\n");
-  const uint64_t start_micros = env_->NowMicros();//
+  const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
-    Status status;
+  Status status;
 
-  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0);//assuring there exist logical files in the level
-  assert(compact->builder == NULL);//TableBuilder* builder;
-  assert(compact->outfile == NULL);//WritableFile* outfile;
+  Log(options_.info_log,  "Compacting level:%d Logical: %d",
+      compact->compaction->level(),
+      compact->compaction->logical_files_inputs_.size());
+
+  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0); //assuring there exist logical files in the level
+  assert(compact->builder == NULL); //TableBuilder* builder;
+  assert(compact->outfile == NULL); //WritableFile* outfile;
   if (snapshots_.empty()) {
     compact->smallest_snapshot = versions_->LastSequence();
   } else {
@@ -913,9 +871,15 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   mutex_.Unlock();
   compact->output_logical_file.number = versions_->NewFileNumber();
 
-  Conca_merge(compact);
+  status = Conca_merge(compact);
   mutex_.Lock();
-  InstallCompactionResults(compact);//store the edit to manifest.
+  if (status.ok()) {
+    status = InstallCompactionResults(compact);  //store the edit to manifest.
+  }
+  if (!status.ok()) {
+    RecordBackgroundError(status);
+  }
+  
   return status;
 }
 
@@ -1190,32 +1154,31 @@ Status DBImpl::BackgroundCompaction(int level) {
   mutex_.AssertHeld();
   Compaction* c = NULL;
   
-  // TODO manual
   bool is_manual = (manual_compaction_ != NULL);
   if (is_manual) {
-
+    // TODO manual
   } else {
     // TODO level
-    //unsigned level = versions_->PickCompactionLevel(levels_locked_, straight_reads_ > kStraightReads);
-    //  
-    c = versions_->PickLogicalFiles(level);
+    Log(options_.info_log, "Level %d begin PickCompaction\n", level);
+    c = versions_->PickCompaction(level);
     if (c) {
       levels_locked_[c->level()] = true;
+      Log(options_.info_log, "Level %d PickCompaction logical_files_inputs_: %d\n",
+          level, c->logical_files_inputs_.size());
     }
   }
 
   Status status;
-
 	if (c == NULL) {
 		// Nothing to do
 	} else {
-    CompactionState* compact = new CompactionState(c);//CompactionState contains the output structure
+    CompactionState* compact = new CompactionState(c);  //CompactionState contains the output structure
+    Log(options_.info_log, "Level %d before DoCompactionWork logical_files_inputs_: %d\n",
+          level, compact->compaction->logical_files_inputs_.size());
     status = DoCompactionWork(compact);
     if (!status.ok()) {
-      printf("BackgroundCompaction, status is not ok, RecordBackgroundError,exit\n");
       RecordBackgroundError(status);
     }
-
     CleanupCompaction(compact);
     c->ReleaseInputs();
     DeleteObsoleteFiles();
@@ -1251,7 +1214,7 @@ void DBImpl::CompactLevelThread() {
     if (shutting_down_.Acquire_Load()) {
       break;
     }
-    printf("Compact level thread before background\n");
+    Log(options_.info_log, "Level %d begin backgroundCompaction\n", level);
     Status s = BackgroundCompaction(level);
     bg_fg_cv_.SignalAll(); // before the backoff In case a waiter
                            // can proceed despite the error
@@ -1518,6 +1481,7 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
     return true;
   } else if (in == "sstables") {
     *value = versions_->current()->DebugString();
+    Log(options_.info_log, "\n%s...\n", (*value).c_str());
     return true;
   }
 

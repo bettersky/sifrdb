@@ -396,8 +396,8 @@ class VersionSet {
   // Returns NULL if there is no compaction to be done.
   // Otherwise returns a pointer to a heap-allocated object that
   // describes the compaction.  Caller should delete the result.
-  Compaction* PickCompaction();
-	Compaction* PickLogicalFiles(int level);
+  Compaction* PickCompaction(int level);
+  
   int Need_compact(int level);
 
   // Return a compaction object for compacting the range [begin,end] in

@@ -32,8 +32,8 @@ class TwoLevelIterator: public Iterator {
   virtual void Prev();
 
 	virtual int isNewSST(){
-			//printf("TwoLevelIterator.cc, isNewSST\n");
-			return new_sst_flag;
+    //printf("TwoLevelIterator.cc, isNewSST\n");
+    return new_sst_flag;
 	}
 
 	virtual Slice  currentSSTLargestKey(){

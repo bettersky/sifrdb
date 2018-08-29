@@ -1483,23 +1483,13 @@ VersionSet::~VersionSet() {
   delete descriptor_file_;
 }
 
-
-
-
 void VersionSet::AddFileLevelBloomFilterInfo(uint64_t file_number, std::string* filter_string) {
-
-
-		printf("versionset, AddFileLevelBloomFilterInfo, file=%d,  filter_size=%d bytes\n",file_number,  filter_string->size());
-		//fwrite(, filter_string->size(), 1, filter_file);
-		void *buffer=malloc(filter_string->size());
-		 //filter_string->copy(buffer,6,5);
-	file_level_bloom_filter[file_number] = filter_string;
-	
-
+  printf("versionset, AddFileLevelBloomFilterInfo, file=%d,  filter_size=%d bytes\n",file_number,  filter_string->size());
+  //fwrite(, filter_string->size(), 1, filter_file);
+  void *buffer=malloc(filter_string->size());
+    //filter_string->copy(buffer,6,5);
+  file_level_bloom_filter[file_number] = filter_string;
 }
-
-
-
 
 int filter_counter=0;
 void VersionSet::PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFilterBuilder* file_level_filter_builder) {
@@ -1581,19 +1571,6 @@ void VersionSet::Generate_file_level_bloom_filter(){
 	exit(9);
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void VersionSet::AppendVersion(Version* v) {
   // Make "v" current
@@ -2173,7 +2150,7 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
     }
   }
 
-  if (current_->logical_files_[0].size() > growth_factor) {
+  if (!locked[0] && current_->logical_files_[0].size() > growth_factor) {
     level = 0;
     printf("NeedsCompaction: 0\n");
     return true;
@@ -2181,116 +2158,24 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
   return false;
 }
 
-Compaction* VersionSet::PickLogicalFiles(int level) {
-		
-	Compaction* c = NULL;		
-	//bool need_compaction = NeedsCompaction(level);
-	   
-	//if (need_compaction) {			
-  assert(level >= 0);//mei
+Compaction* VersionSet::PickCompaction(int level) {
+  assert(level >= 0);  
   assert(level+1 < config::kNumLevels);
-  c = new Compaction(level);
+  Compaction* c = new Compaction(level);
 
   //我们可能想先选择较老的10个文件
-  //int roof=current_->files_[level].size()-1;
-  //int floor=current_->files_[level].size()-COMP_THRESH;
-    //printf("versionset,pickcomp, 66666666666, roof=%d, floor=%d\n",roof,floor);
-  //for (int i = roof; i >=floor; i--) {//current_->files_[level].size() //pick to compact
-  for(int i = 0; i < growth_factor; i++) {
-    //assert( current_->files_[level].size()>=growth_factor );			
-    //printf("versionset,pickcomp, 77777777777\n");
+  for (int i = 0; i < growth_factor; i++) {
     LogicalMetaData* f = current_->logical_files_[level][i];
-    //printf("versionset,pickcomp, i=%d, file=%d\n",i,f->number);
-    c->logical_files_inputs_.push_back(f);//mei, push multi files 
+    c->logical_files_inputs_.push_back(f);  //mei, push multi files 
   }
-  if (c->logical_files_inputs_.empty()) {//exception
+  if (c->logical_files_inputs_.empty()) {   //exception
     // Wrap-around to the beginning of the key space
     printf("versionset, pick, wrap back\n");
     exit(1);
-    //c->logical_files_inputs_[0].push_back(current_->files_[level][0]);
   }
-	// } else {
-	// 	return NULL;
-	// }
-	
 	c->input_version_ = current_;
 	c->input_version_->Ref();
-
-		//printf("pick end, c inputs 0 size:%d\n",c->inputs_[0].size() );
-	//InternalKey smallest, largest;//this is for set compaction pointer in old way
-	//GetRange(c->inputs_[0], &smallest, &largest);
 	return c;
-}
-
-Compaction* VersionSet::PickCompaction() {//blank
-
-	fprintf(stderr, "version_set.cc, PickCompaction,exit\n");
-	exit(9);
-  // Compaction* c;
-  // int level;
-
-	// //return NULL;
-  // // We prefer compactions triggered by too much data in a level over
-  // // the compactions triggered by seeks.
-  // //printf("versionset,pickcomp,comp level=%d\n",current_->compaction_level_);
-  // const bool size_compaction = (current_->compaction_score_ >= 1);
-   // //printf("size_compaction=%d, current_->compaction_score_=%f\n",size_compaction,current_->compaction_score_);
-   // //exit(9);
-  // //return NULL;
-  // const bool seek_compaction = NULL;// (current_->file_to_compact_ != NULL);
- 
-  
-  // if (size_compaction) {
-    // level = current_->compaction_level_;//我们已经得到了层。
-    // assert(level >= 0);//mei
-    // assert(level+1 < config::kNumLevels);
-    // c = new Compaction(level);
-
-    // // Pick the first file that comes after compact_pointer_[level]
-			// //我们选择的是指针后的10个文件。
-    // for (size_t i = 0; i <COMP_THRESH ; i++) {//current_->files_[level].size() //pick to compact
-		// //printf("versionset, pick, L %d, i=%d, curfile=%d, totalfile=%d\n",level,i, current_->files_[level][i]->number, current_->files_[level].size());
-		// //exit(9);
-			// printf("PickCompaction,i=%d,file number=%d\n", i,  current_->files_[level][i]->number);
-		 // FileMetaData* f = current_->files_[level][i];
-		 // c->inputs_[0].push_back(f);//mei, push multi files 
-      // // if (compact_pointer_[level].empty() ||
-          // // icmp_.Compare(f->largest.Encode(), compact_pointer_[level]) > 0) {//select file according to compact_pointer
-		  // // printf("versionset, pick, break for\n");
-        // // c->inputs_[0].push_back(f);
-        // // break;
-      // // }
-    // }
-    // if (c->inputs_[0].empty()) {
-      // // Wrap-around to the beginning of the key space
-	  // printf("versionset, pick, wrap back\n");
-	  // exit(1);
-      // c->inputs_[0].push_back(current_->files_[level][0]);
-    // }
-  // } else if (seek_compaction) {//may should be removed, mei doesn't want compaction in seek
-		// printf("versionset, pick, seek_compaction\n");
-		 // exit(9);
-		// level = current_->file_to_compact_level_;
-		// c = new Compaction(level);
-		// c->inputs_[0].push_back(current_->file_to_compact_);
-  // } else {
-		// return NULL;
-  // }
-
-  // c->input_version_ = current_;
-  // c->input_version_->Ref();
-
-  // // Files in level 0 may overlap each other, so pick up all overlapping ones
-  
-
-  // //SetupOtherInputs(c); //mei, we don't set up others. We have assured the participating sst.
-	// InternalKey smallest, largest;
-	// GetRange(c->inputs_[0], &smallest, &largest);
-	// //printf("versionset. pick, smallest.Encode().ToString()=%s  largest.Encode().ToString()=%s\n", smallest.Encode().ToString().c_str(), largest.Encode().ToString().c_str());
-  // //compact_pointer_[level] = largest.Encode().ToString();//mei
-  // //c->edit_.SetCompactPointer(level, largest);//mei
-	// //printf("versionset. pick, c->inputs_[0] size=%d\n",c->inputs_[0].size());
-	// return c;
 }
 
 void VersionSet::SetupOtherInputs(Compaction* c) {//blank

@@ -49,24 +49,23 @@ void VersionEdit::Clear() {
 }
 
 void LogicalMetaData::AppendPhysicalFile(PhysicalMetaData &f) {
-		if (physical_files.size() == 0) {
-			smallest=f.smallest;
-		} else {
-			const InternalKeyComparator *icmp_=new InternalKeyComparator( (new Options())->comparator);//May cause memory leak
-			if(icmp_->Compare(f.smallest, smallest)<=0 ){
-				fprintf(stderr, "version_edit.cc, AppendPhysicalFile. err, \n");
-				exit(9);
-			}		
-		}
-		largest = f.largest;
+  if (physical_files.size() == 0) {
+    smallest=f.smallest;
+  } else {
+    //May cause memory leak
+    const InternalKeyComparator *icmp_=new InternalKeyComparator( (new Options())->comparator); 
+    if(icmp_->Compare(f.smallest, smallest) <=0 ) {
+      fprintf(stderr, "version_edit.cc, AppendPhysicalFile. err, \n");
+      exit(9);
+    }		
+  }
+  largest = f.largest;
 
-		file_size += f.file_size; 
-		physical_files.push_back(f);
+  file_size += f.file_size; 
+  physical_files.push_back(f);
 }
 
 void VersionEdit::EncodeTo(std::string* dst) const {
-
-		
 	//printf("version_edit.cc, EncodeTo, begin, dst=%s\n",dst->c_str());
   if (has_comparator_) {
 	//printf("version_edit.cc, EncodeTo, has_comparator_\n");
