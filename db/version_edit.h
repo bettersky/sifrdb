@@ -26,7 +26,6 @@ struct PhysicalMetaData {
 };
 
 struct LogicalMetaData {
-	
 	int refs;
 	int allowed_seeks;
 	uint64_t number;	

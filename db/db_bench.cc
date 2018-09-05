@@ -170,15 +170,16 @@ static const char* FLAGS_benchmarks =
     "fillseq,"
     "fillsync,"
     "fillrandom,"
-	"l," //load ycsb
-	"ls," //load ycsn in sorted
-	"a,"
-	"b,"
-	"c,"
-	"d,"
-	"e,"
-	"f,"
-	"xcompact,"	
+    "loadycsb"  //load ycsb
+    "l,"       //load ycsb
+    "ls,"      //load ycsn in sorted
+    "a,"
+    "b,"
+    "c,"
+    "d,"
+    "e,"
+    "f,"
+    "xcompact,"	
     "overwrite,"
     "readrandom,"
     "readrandom,"  // Extra run to allow previous compactions to quiesce
@@ -544,8 +545,6 @@ class Benchmark {
     entries_per_batch_(1),
     reads_(FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads),
     heap_counter_(0) {
-	
-	//printf("I am db_bench.cc Benchmark, begin ,FLAGS_db=%s \n",FLAGS_db);
     std::vector<std::string> files;
     Env::Default()->GetChildren(FLAGS_db, &files);
     for (size_t i = 0; i < files.size(); i++) {
@@ -556,7 +555,6 @@ class Benchmark {
     if (!FLAGS_use_existing_db) {
       DestroyDB(FLAGS_db, Options());
     }
-	//printf("I am db_bench.cc Benchmark, end \n");
   }
 
   ~Benchmark() {
@@ -568,22 +566,17 @@ class Benchmark {
   void Run() {
     PrintHeader();
     Open();
-	  //exit(1);//test if log is deleted  --no
     const char* benchmarks = FLAGS_benchmarks;
-	  //printf(" I amd db_bench.cc , Run, `00000\n");
     while (benchmarks != NULL) {
       const char* sep = strchr(benchmarks, ',');
       Slice name;
       if (sep == NULL) {
-		  //printf(" I amd db_bench.cc , Run, `0000001111\n");
         name = benchmarks;
         benchmarks = NULL;
       } else {
-		  //printf(" I amd db_bench.cc , Run, `12121212\n");
         name = Slice(benchmarks, sep - benchmarks);
         benchmarks = sep + 1;
       }
-      //printf(" I amd db_bench.cc , Run, `1111111111\n");
       // Reset parameters that may be overridden below
       num_ = FLAGS_num;
       reads_ = (FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads);
@@ -594,7 +587,6 @@ class Benchmark {
       void (Benchmark::*method)(ThreadState*) = NULL;
       bool fresh_db = false;
       int num_threads = FLAGS_threads;
-      //printf(" _____________I amd db_bench.cc , Run, before if \n");
       if (name == Slice("open")) {
         method = &Benchmark::OpenBench;
         num_ /= 10000; 
@@ -612,9 +604,6 @@ class Benchmark {
       } else if (name == Slice("l")) {
         fresh_db = true;
         method = &Benchmark::LoadYCSB;
-      } else if (name == Slice("ls")) {
-        fresh_db = true;
-        method = &Benchmark::LoadYCSBSorted;
       } else if (name == Slice("a")||name == Slice("b")||name == Slice("c") ||
 						name == Slice("d")||name == Slice("e")||name == Slice("f")||name == Slice("runycsb")) {
         method = &Benchmark::RunYCSB;
@@ -688,23 +677,14 @@ class Benchmark {
         } else {
           delete db_;
           db_ = NULL;
-		 // printf("____________I amd db_bench.cc before DestroyDB\n");
-		  //exit(1);//test if log is deleted  --no
           DestroyDB(FLAGS_db, Options());
-		 // printf("____________I amd db_bench.cc after DestroyDB\n");
-		  //exit(1);//test if log is deleted  --no
           Open();
-		   //printf("____________I amd db_bench.cc after Open\n");
-		  //exit(1);//test if log is deleted  --yes
         }
       }
- //printf(" _____________I amd db_bench.cc , Run, before method \n");
       if (method != NULL) {
-		    printf(" _____________I amd db_bench.cc , Run, before RunBenchmark \n");
-			//exit(1);//test if log is deleted  --yes
         RunBenchmark(num_threads, name, method);
       }
-    }//end while
+    }
   }
 
  private:
@@ -762,21 +742,16 @@ class Benchmark {
       arg[i].thread->shared = &shared;
       Env::Default()->StartThread(ThreadBody, &arg[i]);
     }
-//printf(" I amd db_bench.cc , RunBenchmark 00000\n");
     shared.mu.Lock();
     while (shared.num_initialized < n) {
       shared.cv.Wait();
     }
-//printf(" I amd db_bench.cc , RunBenchmark 000001111\n");
     shared.start = true;
-	//printf(" I amd db_bench.cc , RunBenchmark 000003333\n");
     shared.cv.SignalAll();
-	//printf(" I amd db_bench.cc , RunBenchmark 00000555555\n");
     while (shared.num_done < n) {
       shared.cv.Wait();
     }
     shared.mu.Unlock();
-//printf(" I amd db_bench.cc , RunBenchmark , before  arg[0].thread->stats.Merge(arg[i].thread->stats\n");
     for (int i = 1; i < n; i++) {
       arg[0].thread->stats.Merge(arg[i].thread->stats);
     }
@@ -786,10 +761,6 @@ class Benchmark {
       delete arg[i].thread;
     }
     delete[] arg;
-	
-	printf("db_bench.cc, RunBenchmark finished\n");
-	//printf("benchmark finishes, but may compaction is closing, enter sleep\n");
-	//sleep(999999);
   }
 
   void Crc32c(ThreadState* thread) {
@@ -932,23 +903,8 @@ class Benchmark {
 //----------------------------------------------------------------------------------  
 
 void LoadYCSB(ThreadState* thread) {
-		printf(" db_bench, LoadYCSB\n");
-		DoLoad(thread,false);
+	DoLoad(thread, false);
 }
-
-void LoadYCSBSorted(ThreadState* thread) {
-		printf("db_bench, LoadYCSBSorted\n");
-		//sync_queue = (std::queue<leveldb::Flash_file*>*) malloc(sizeof(std::queue<leveldb::Flash_file*>));
-		//leveldb::Flash_file* f1;
-		//sync_queue->push(f1);
-		
-		//thread_sync
-		//exit(9);
-
-		DoLoad(thread,true);
-		
-  }
-
 
 DBImpl *get_dbimpl(){
 	void *dbim;
@@ -1003,7 +959,6 @@ int get_fly(){
 
 }
 void DoLoad(ThreadState* thread, bool seq){
-
   if (num_ != FLAGS_num) {
     char msg[100];
     snprintf(msg, sizeof(msg), "(%d ops)", num_);
@@ -1012,18 +967,16 @@ void DoLoad(ThreadState* thread, bool seq){
 
 	srand(time(NULL));
 
-	printf("db_bench, doLoad,num_=%d\n",num_);
   RandomGenerator gen;
   WriteBatch batch;
   Status s;
   int64_t bytes = 0;
-  char *path="/home/lds/emlmt/workloads/myworkload-run-c-zipf-1G";//myworkload-run-c-zipf-1G
-  FILE *load=fopen(path,"r");
+  char *path = "/home/lds/emlmt/workloads/myworkload-run-c-zipf-1G";
+  FILE *load = fopen(path, "r");
 
-	clock_gettime(CLOCK_MONOTONIC,&begin);
 	uint64_t i;
-	uint64_t ops=0;
-  for ( i = 0; i < num_; i += entries_per_batch_) {		
+	uint64_t ops = 0;
+  for ( i = 0; i < num_; i += entries_per_batch_) {
     batch.Clear();     
     char key[100];			
     if(seq){
@@ -1068,44 +1021,39 @@ void DoLoad(ThreadState* thread, bool seq){
     
     ops++;
     uint64_t rate=1000000;		
-
-          
-          //printf("size =%d\n", impl->versions_->current_->logical_files_[0].size());
+    //printf("size =%d\n", impl->versions_->current_->logical_files_[0].size());
     if(0==ops%rate){
-        //printf("xxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
-          
-  
-          clock_gettime(CLOCK_MONOTONIC,&stage); 
-          double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-          
-          printf("done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db),get_fly(),  get_sst_num());
-          fprintf(stats_log_,"done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db), get_fly(),  get_sst_num());
-          
-          // int *num_in_levels=(int*)arg;
-          // int sequence=0;
-          
-            for(int i=0;i<=getLevel();i++){
-          
-              int logical_num=get_dbimpl()->versions_->current_->logical_files_[i].size();
-            
-            printf("%d{",logical_num);
-            fprintf(stats_log_, "%d{",logical_num);
-            
-              for(int j=0;j<logical_num;j++){
-              printf("%d,", get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-              fprintf(stats_log_,"%d,",  get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-              }
-          
-              printf("}");
-            fprintf(stats_log_,"}");
-            }
-          
-          printf("]\n");
-          fprintf(stats_log_, "]\n");
-          
-          
-          
-          fflush(stats_log_);
+      clock_gettime(CLOCK_MONOTONIC,&stage); 
+      double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
+      
+      printf("done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db),get_fly(),  get_sst_num());
+      fprintf(stats_log_,"done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db), get_fly(),  get_sst_num());
+      
+      // int *num_in_levels=(int*)arg;
+      // int sequence=0;
+      
+        for(int i=0;i<=getLevel();i++){
+      
+          int logical_num=get_dbimpl()->versions_->current_->logical_files_[i].size();
+        
+        printf("%d{",logical_num);
+        fprintf(stats_log_, "%d{",logical_num);
+        
+          for(int j=0;j<logical_num;j++){
+          printf("%d,", get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
+          fprintf(stats_log_,"%d,",  get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
+          }
+      
+          printf("}");
+        fprintf(stats_log_,"}");
+        }
+      
+      printf("]\n");
+      fprintf(stats_log_, "]\n");
+      
+      
+      
+      fflush(stats_log_);
     }
     
     if (!s.ok()) {
@@ -1129,11 +1077,8 @@ pthread_mutex_t thread_counter_lock= PTHREAD_MUTEX_INITIALIZER;
 
 void RunYCSB(ThreadState* thread) {
 		//*******give each thread an identifier.
-		
-			
 		ReadOptions options;
 		std::string value;
-		
 	int loc_counter;//local thread identifier
 	pthread_mutex_lock(&thread_counter_lock);
 		tcounter++;
@@ -1186,8 +1131,6 @@ void RunYCSB(ThreadState* thread) {
 		WriteBatch batch;
 		Status s;
 		int64_t bytes = 0;
-		
-
 		uint64_t find_times=0;
 		uint64_t found = 0;
 		uint64_t scan_times = 0;
@@ -1354,7 +1297,7 @@ void DoWrite(ThreadState* thread, bool seq) {
       batch.Put(key, gen.Generate(value_size_));
       bytes += value_size_ + strlen(key);
       thread->stats.FinishedSingleOp();
-      //fprintf(stats_log_, "key: %s \n", key);
+      fprintf(stats_log_, "key: %s \n", key);
     }
         
     s = db_->Write(write_options_, &batch);
@@ -1487,62 +1430,21 @@ void ReadRandom(ThreadState* thread) {
   ReadOptions options;
   std::string value;
   int found = 0;
-	
-  //*******give each thread an identifier.
-	int loc_counter;//local thread identifier
-	int lock_res= pthread_mutex_lock(&thread_counter_lock);
-  if(lock_res!=0) {
-    printf("db_bench, ReadRandom,lock_res=%d\n",lock_res);
-    exit(9);
-  }
-
-  tcounter++;
-  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
-  
-  if(tcounter==1) {
-    printf("db_bench, readranom, invoke the thread pool\n");
-    db_->Get(options, "0", &value).ok();//Invoke to create the thead pool.
-    sleep(1);
-    printf("db_bench, readranom, invoke the thread pool, done---------------------\n\n\n\n");
-  }
-  //printf("db_bench, readrandom, tcounter=%d\n",tcounter);
-
-  loc_counter=tcounter;
-  //printf("db_bench, readrandom, loc_counter=%d, begin sleep\n",loc_counter);
-	pthread_mutex_unlock(&thread_counter_lock);
-  //*******give each thread an identifier.
-	
   for (int i = 0; i < reads_; i++) {
     char key[100];
 		const int k = thread->rand.Next() % FLAGS_num;
     snprintf(key, sizeof(key), "%016d", k);
     if (db_->Get(options, key, &value).ok()) {
-      fprintf(stats_log_, "ReadRandom Found key: %s", k);
+      fprintf(stats_log_, "ReadRandom Found key: %s\n", key);
       found++;
     } else {
-      fprintf(stats_log_, "ReadRandom NotFound key: %s", k);
+      fprintf(stats_log_, "ReadRandom NotFound key: %s\n", key);
 	  }
-	  
-	  if( i%10==0 &&i!=0){//(reads_/10)
-			clock_gettime(CLOCK_MONOTONIC,&stage); //begin insert , so begin counting
-			double duration=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-			if(i%10000==0){//print in the screen, should be less frequent.
-					//printf("front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
-			// fprintf(recorder,"front_th= %d , bg_th= %d , i= %d , found= %d , time= %f , buffer/cache= %d MB , read_io= %lld sectors\n",FLAGS_threads, read_thread,i,found,duration,mem_using(4),read_mb(recorder_name));
-			// fflush(recorder);
-			}
-	  }
-      //thread->stats.FinishedSingleOp();
-  }
-	
-	clock_gettime(CLOCK_MONOTONIC,&stage);
-	double duration=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-	printf("db_bench,readrandom, finish, dur=%f s, th=%d\n",loc_counter, duration);
-	
+    //thread->stats.FinishedSingleOp();
+  } 
   char msg[100];
   snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
   thread->stats.AddMessage(msg);
-	//sleep(4);
 #if 0
   ReadOptions options;
   std::string value;
