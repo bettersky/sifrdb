@@ -18,9 +18,8 @@
 #include "leveldb/slice.h"
 #include "leveldb/status.h"
 
-
-
 namespace leveldb {
+class PhysicalMetaData;
 
 class Iterator {
  public:
@@ -29,18 +28,13 @@ class Iterator {
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
-	virtual int isNewSST();
-	virtual Slice currentSSTSmallestKey();
-
-	virtual Slice currentSSTLargestKey();
-	virtual Slice nextSSTSmallestKey();
-	virtual int nextSST();
-	virtual int get_sst_meta(const void **arg);
-	
-	
-	virtual int isOverlapped(){}
-	virtual int next_sst(){}
-
+	virtual Slice currentSSTSmallestKey() {}
+	virtual Slice currentSSTLargestKey() {}
+	virtual Slice nextSSTSmallestKey() {}
+  virtual bool IsNewSSTTable() {return false;}
+	virtual void NextSSTTable() {}
+	virtual bool IsOverlapped() {return false;}
+  virtual PhysicalMetaData* GetSSTTableMeta() {return NULL;}
 
   virtual bool Valid() const = 0;
 

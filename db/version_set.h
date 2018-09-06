@@ -157,7 +157,6 @@ class Version {
   friend class Compaction;
   friend class VersionSet;
 
-  class LevelFileNumIterator;
   class LogicalSSTNumIterator;
 
   Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
@@ -414,14 +413,9 @@ class VersionSet {
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.
   Iterator* MakeInputIterator(Compaction* c);
-	Iterator* MakeInputIterator_conca(Compaction* c);
 
   // Returns true iff some level needs a compaction.
   bool NeedsCompaction(bool* locked, int& level);
-  // bool NeedsCompaction() const {
-  //   Version* v = current_;
-  //   return (v->compaction_score_ >= 1) || (v->file_to_compact_ != NULL);
-  // }
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.

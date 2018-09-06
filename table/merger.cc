@@ -30,12 +30,11 @@ class MergingIterator : public Iterator {
     delete[] children_;
   }
 	
-  virtual int isNewSST() {
-		//printf("merger.cc, isNewSST\n");
-		return current_->isNewSST();
+  virtual bool IsNewSSTTable() {
+		return current_->IsNewSSTTable();
 	}
 	
-	virtual int isOverlapped(){
+	virtual bool IsOverlapped() {
     //printf("merger.cc,isOverlapped begin\n");
     //It is sure that the active key of current_ is smaller than the active keys of other children. So if non-overlapp, all keys of current_ are small than the smallest key of other children.
     //Slice current_largest= current_->currentSSTLargestKey();//to termine that all keys of current_ are smaller thant other ssts'.
@@ -57,33 +56,18 @@ class MergingIterator : public Iterator {
     //printf("merger.cc, overlap=%d\n",overlap);
     return overlap;
 	}
-	
-	virtual int get_sst_meta(const void **arg) {
-		//printf("merger.cc, get_sst_meta\n");
-		current_->get_sst_meta(arg);
-	}
 
-	virtual int next_sst(){
-		//printf("merger.cc, next_sst begin, %d+++++++++++++++++\n", current_->Valid());
-
-		current_->next_sst();
-
+	virtual void NextSSTTable() {
+		current_->NextSSTTable();
 		FindSmallest();
-		
-
 	}
-
-	
 	
   virtual bool Valid() const {
-	
     return (current_ != NULL);
   }
 
   virtual void SeekToFirst() {
-
 		//printf("merge.cc, SeekToFirst, n_=%d\n",n_);
-		
     for (int i = 0; i < n_; i++) {
       children_[i].SeekToFirst();
     }
@@ -110,7 +94,6 @@ class MergingIterator : public Iterator {
 
   virtual void Next() {
     assert(Valid());
-//printf("merger.cc, begin,direction_=%d\n");//direction_ is 0
     // Ensure that all children are positioned after key().
     // If we are moving in the forward direction, it is already
     // true for all of the non-current_ children since current_ is
@@ -165,8 +148,6 @@ class MergingIterator : public Iterator {
 
   virtual Slice key() const {
     assert(Valid());
-
-	
     return current_->key();
   }
 

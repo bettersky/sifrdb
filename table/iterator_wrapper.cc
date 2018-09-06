@@ -3,12 +3,8 @@
 
 namespace leveldb {
 
-	int IteratorWrapper::next_sst(){
-		//printf("iterator_wrapper.h, next_sst, begin, \n");
-		
-		iter_->next_sst();
-		//printf("iterator_wrapper.h, next_sst, after called\n");
-		
+	void IteratorWrapper::NextSSTTable(){
+		iter_->NextSSTTable();
 		Update();
 	}
 
@@ -23,13 +19,7 @@ namespace leveldb {
   }
 
   bool IteratorWrapper::Valid() const        {
-		//flag=iter_->flag;
-		//if(iter_ == NULL){
-			//printf("iterator_wrapper.h, valid, iter is NULL\n");
-			//exit(9);
-		//}
 		return valid_; 
-		//return  iter_->Valid();
   }
   Slice IteratorWrapper::key() const         {
 		assert(Valid()); 

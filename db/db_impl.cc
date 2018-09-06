@@ -734,9 +734,9 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
 }
 
-Status DBImpl::Conca_merge(CompactionState* compact) {
+Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
  	Status status;
-	Iterator* input = versions_->MakeInputIterator_conca(compact->compaction);
+	Iterator* input = versions_->MakeInputIterator(compact->compaction);
 	input->SeekToFirst();
 	
 	ParsedInternalKey ikey;
@@ -750,18 +750,17 @@ Status DBImpl::Conca_merge(CompactionState* compact) {
 	
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     counter++;
-    //determine if the current_ is a new sst.
-    if(input->isNewSST()) {
-      if(input->isOverlapped()==0){
-        //no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
-        const void *arg;//
-        input->get_sst_meta(&arg);
-        PhysicalMetaData *phy_file= (PhysicalMetaData*)arg;
+    // determine if the current iterator is a new sstable's start position.
+    if (input->IsNewSSTTable()) {
+      if (input->IsOverlapped() == 0) {
+        // no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
+        //const void *arg;  
+        PhysicalMetaData *phy_file = input->GetSSTTableMeta();
         // TODO : seqwrite bug??? 
         //FinishCompactionOutputFile(compact, input);
         // old level 的 sstable  如何删除 ?? 
         compact->output_logical_file.AppendPhysicalFile(*phy_file);
-        input->next_sst();
+        input->NextSSTTable();
         continue;
       }
     }
@@ -871,7 +870,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   mutex_.Unlock();
   compact->output_logical_file.number = versions_->NewFileNumber();
 
-  status = Conca_merge(compact);
+  status = ConcatenatingCompaction(compact);
   mutex_.Lock();
   if (status.ok()) {
     status = InstallCompactionResults(compact);  //store the edit to manifest.

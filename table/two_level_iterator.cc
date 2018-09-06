@@ -31,61 +31,29 @@ class TwoLevelIterator: public Iterator {
   virtual void Next();
   virtual void Prev();
 
-	virtual int isNewSST(){
-    //printf("TwoLevelIterator.cc, isNewSST\n");
-    return new_sst_flag;
+	virtual bool IsNewSSTTable(){
+    return start_sst_;
 	}
 
 	virtual Slice  currentSSTLargestKey(){
-			//printf("TwoLevelIterator.cc, currentSSTLargestKey\n");
-
-			return index_iter_.currentSSTLargestKey();
-
+    return index_iter_.currentSSTLargestKey();
 	}
 	virtual Slice  currentSSTSmallestKey(){
-			//printf("TwoLevelIterator.cc, currentSSTSmallestKey\n");
-
-			return index_iter_.currentSSTSmallestKey();
-
+    return index_iter_.currentSSTSmallestKey();
 	}
 	virtual  Slice  nextSSTSmallestKey(){
-			//printf("TwoLevelIterator.cc, nextSSTSmallestKey\n");
-
-			return index_iter_.nextSSTSmallestKey();
+    return index_iter_.nextSSTSmallestKey();
 	}
 
-	virtual int next_sst(){
-			//printf("TwoLevelIterator.cc, next_sst\n");
-			//index_iter_.Valid();
-			//printf("TwoLevelIterator.cc, next_sst, before calling index_iter_ next_sst============\n");
-			//index_iter_.next_sst();
-			index_iter_.next_sst();
-
-			//index_iter_.Next();//there is an update in warpper.
-			//index_iter_.Next();
-			//int r=index_iter_.Valid();
-			//index_iter_.Valid();
-			//index_iter_.Valid();
-			//printf("TwoLevelIterator.cc, next_sst, after called index_iter_ Valid %d\n",index_iter_.Valid());
-			//exit(9);
-			//printf("TwoLevelIterator.cc, next_sst,index_iter_.Valid()=%d\n",index_iter_.Valid());
-
-			InitDataBlock();//now we have give a data iterator to the data_iter_ wrapper, however, the data_iter_
-			if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();
-
-			//printf("TwoLevelIterator.cc, next_sst, after called InitDataBlock, data_iter_.Valid()= %d\n",data_iter_.Valid());
-
-			//SkipEmptyDataBlocksForward();
-			//if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();
-			//printf("TwoLevelIterator.cc, next_sst, after called data_iter_.Valid()= %d\n",data_iter_.Valid());
+	virtual void NextSSTTable() {
+    index_iter_.Next();
+    InitDataBlock();  //now we have give a data iterator to the data_iter_ wrapper, however, the data_iter_
+    if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();
 	}
+
+  virtual bool IsOverlapped() { }
 	
-	virtual int get_sst_meta(const void **arg){
-			//printf("TwoLevelIterator.cc, get_sst_meta\n");
-			index_iter_.get_sst_meta(arg);
-	}
-
-	int new_sst_flag;
+  bool start_sst_;
 	Slice current_sst_largest_key;
 	Slice next_sst_smallest_key;
 
@@ -141,8 +109,8 @@ TwoLevelIterator::TwoLevelIterator(
       arg_(arg),
       options_(options),
       index_iter_(index_iter),
-      data_iter_(NULL) {
-		new_sst_flag=0;
+      data_iter_(NULL),
+      start_sst_(false) {
 }
 
 TwoLevelIterator::~TwoLevelIterator() {
@@ -170,13 +138,10 @@ void TwoLevelIterator::SeekToLast() {
 }
 
 void TwoLevelIterator::Next() {
-  //I will know if this the last key.
-	//fprintf(stderr,"two_level_iterator.cc, Next\n");
   assert(Valid());
-  data_iter_.Next();//data_iter_ is also a two level iterator
-	new_sst_flag=0;//Once the Next is called, new_sst_flag is marked as 0.
-  SkipEmptyDataBlocksForward();//May mark the new_sst_flag to 1.
-	//fprintf(stderr,"two_level_iterator.cc, next, end, new_sst_flag=%d\n",new_sst_flag);
+  data_iter_.Next();  // data_iter_ is also a two level iterator
+	start_sst_ = false;   // Once the Next is called, start_sst_ is marked as 0.
+  SkipEmptyDataBlocksForward();   // May mark the start_sst_ to 1.
 }
 
 void TwoLevelIterator::Prev() {
@@ -188,12 +153,11 @@ void TwoLevelIterator::Prev() {
 int TwoLevelIterator::SkipEmptyDataBlocksForward() {
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) {
     // Move to next block
-    if (!index_iter_.Valid()) {//
+    if (!index_iter_.Valid()) {
       SetDataIterator(NULL);
       return 0;
     }
 	
-	  //printf("two_level_iterator.cc, move to the next sst\n");
     index_iter_.Next();//move to the next SST
     InitDataBlock();
     if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();
@@ -220,29 +184,23 @@ void TwoLevelIterator::SetDataIterator(Iterator* data_iter) {
 }
 
 void TwoLevelIterator::InitDataBlock() {
-	//printf("two_level, InitDataBlock,111111111, begin,index_iter_.Valid()=%d\n",index_iter_.Valid());
-	
   if (!index_iter_.Valid()) {
     SetDataIterator(NULL);
   } else {
     Slice handle = index_iter_.value();
-	//printf("two_level, InitDataBlock,33333333333, data_iter_.iter()=%p,handle.compare(data_block_handle_)=%d\n",data_iter_.iter(),handle.compare(data_block_handle_));
     if (data_iter_.iter() != NULL && handle.compare(data_block_handle_) == 0) {
       // data_iter_ is already constructed with this iterator, so
       // no need to change anything
     } else {
-		//printf("two_level, InitDataBlock,44444444444444444 \n");
       Iterator* iter = (*block_function_)(arg_, options_, handle);
       data_block_handle_.assign(handle.data(), handle.size());
       SetDataIterator(iter);
-	  //printf("two_level, InitDataBlock,44444444444444444,data_iter_.iter()=%p ,iter.Valid()=%d\n",data_iter_.iter(),iter->Valid());
-		new_sst_flag=1;//mark new sst
-		//set current_sst_largest_key
-		//set next_sst_smallest_key
+      start_sst_ = true;   // mark new sst
+      //set current_sst_largest_key
+      //set next_sst_smallest_key
     }
   }
 }
-
 }  // namespace
 
 Iterator* NewTwoLevelIterator(

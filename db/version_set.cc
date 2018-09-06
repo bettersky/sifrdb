@@ -32,8 +32,6 @@ extern int read_method;
 
 extern int read_thread;
 
-
-
 namespace leveldb {
 
 static const uint64_t kTargetFileSize = 2 * 1048576;
@@ -91,10 +89,10 @@ Version::~Version() {
   }
 }
 
-//find the physical file that possiblely includes the key,  in the given logical file
+// find the physical file that possiblely includes the key,  in the given logical file
 int FindFile(const InternalKeyComparator& icmp,
 			 const LogicalMetaData& logical_file,
-             const Slice& key) { 
+             const Slice& key) {
   uint32_t left = 0;
   uint32_t right = logical_file.physical_files.size();
   while (left < right) {
@@ -127,43 +125,6 @@ static bool BeforeFile(const Comparator* ucmp,
           ucmp->Compare(*user_key, f->smallest.user_key()) < 0);
 }
 
-// bool SomeFileOverlapsRange(
-    // const InternalKeyComparator& icmp,
-    // bool disjoint_sorted_files,
-    // const std::vector<LogicalMetaData*>& files,
-    // const Slice* smallest_user_key,
-    // const Slice* largest_user_key) {
-  // const Comparator* ucmp = icmp.user_comparator();
-  // if (!disjoint_sorted_files) {
-    // // Need to check against all files
-    // for (size_t i = 0; i < files.size(); i++) {
-      // const LogicalMetaData* f = files[i];
-      // if (AfterFile(ucmp, smallest_user_key, f) ||
-          // BeforeFile(ucmp, largest_user_key, f)) {
-        // // No overlap
-      // } else {
-        // return true;  // Overlap
-      // }
-    // }
-    // return false;
-  // }
-
-  // // Binary search over file list
-  // uint32_t index = 0;
-  // if (smallest_user_key != NULL) {
-    // // Find the earliest possible internal key for smallest_user_key
-    // InternalKey small(*smallest_user_key, kMaxSequenceNumber,kValueTypeForSeek);
-    // index = FindFile(icmp, files, small.Encode());
-  // }
-
-  // if (index >= files.size()) {
-    // // beginning of range is after all files, so no overlap.
-    // return false;
-  // }
-
-  // return !BeforeFile(ucmp, largest_user_key, files[index]);
-// }
-
 // An internal iterator.  For a given version/level pair, yields
 // information about the files in the level.  For a given entry, key()
 // is the largest key that occurs in the file, and value() is an
@@ -179,39 +140,22 @@ class Version::LogicalSSTNumIterator : public Iterator {
         index_(flist->physical_files.size()) {        // Marks as invalid
   }
 
-	virtual Slice currentSSTLargestKey(){
-		//printf("versionset.cc, currentSSTLargestKey,index_=%d\n",index_);
+	virtual Slice currentSSTLargestKey() {
 		return flist_->physical_files [index_].largest.Encode() ;
-
-
 	}
-	virtual Slice currentSSTSmallestKey(){
-		//printf("versionset.cc, currentSSTSmallestKey,index_=%d\n",index_);
-		
+	virtual Slice currentSSTSmallestKey() {
 		return flist_->physical_files [index_].smallest.Encode() ;
-
-
 	}
 
-	virtual Slice nextSSTSmallestKey(){ 
+	virtual Slice nextSSTSmallestKey() {
 		printf("versionset.cc, nextSSTSmallestKey\n");
 	}
 	
-	virtual int get_sst_meta(const void **arg){
-		//printf("versionset.cc, get_sst_meta\n");
-
-		*arg=&flist_->physical_files[index_];
+	PhysicalMetaData* GetSSTTableMeta() {
+		return const_cast<PhysicalMetaData*>(&flist_->physical_files[index_]);
 	}
-	virtual int next_sst(){ 
-		//printf("versionset.cc, next_sst, index_=%d, flist_->physical_files.size()=%d\n",index_,flist_->physical_files.size());
-    assert(Valid());
-		index_++;
-		//printf("versionset.cc, next_sst, index_=%d, Valid=%d\n",index_, Valid());
-		return 0;
-	}	
 	
   virtual bool Valid() const {
-	//printf("versionset.cc, Valid, aaaa index_=%d\n",index_);
     return index_ < flist_->physical_files.size();
   }
   virtual void Seek(const Slice& target) {
@@ -222,7 +166,6 @@ class Version::LogicalSSTNumIterator : public Iterator {
     index_ = flist_->physical_files.empty() ? 0 : flist_->physical_files.size() - 1;
   }
   virtual void Next() {
-	//printf("versionset.cc, Next,index_=%d\n",index_);
     assert(Valid());
     index_++;
   }
@@ -247,67 +190,11 @@ class Version::LogicalSSTNumIterator : public Iterator {
   virtual Status status() const { return Status::OK(); }
  private:
   const InternalKeyComparator icmp_;
-  //const std::vector<PhysicalMetaData*>* const flist_;
   const LogicalMetaData *flist_;
   uint32_t index_;
 
   // Backing store for value().  Holds the file number and size.
   mutable char value_buf_[16];
-};
-
-
-class Version::LevelFileNumIterator : public Iterator {
- public:
-  LevelFileNumIterator(const InternalKeyComparator& icmp, const LogicalMetaData* logical_f)
-		: icmp_(icmp),
-        logical_f_(logical_f)
-        //index_(flist->size()) 
-	        // Marks as invalid
-	{
-		printf("version_set.cc, LevelFileNumIterator!,exit!\n");
-		exit(9);
-	}
-  // virtual bool Valid() const {
-    // return index_ < logical_f_->physical_files.size();
-  // }
-  // virtual void Seek(const Slice& target) {
-    // index_ = FindFile(icmp_, *logical_f_, target);
-  // }
-  // virtual void SeekToFirst() { index_ = 0; }
-  // virtual void SeekToLast() {
-    // index_ = flist_->empty() ? 0 : flist_->size() - 1;
-  // }
-  // virtual void Next() {
-    // assert(Valid());
-    // index_++;
-  // }
-  // virtual void Prev() {
-    // assert(Valid());
-    // if (index_ == 0) {
-      // index_ = flist_->size();  // Marks as invalid
-    // } else {
-      // index_--;
-    // }
-  // }
-  // Slice key() const {
-    // assert(Valid());
-    // return (*flist_)[index_]->largest.Encode();
-  // }
-  // Slice value() const {
-    // assert(Valid());
-    // EncodeFixed64(value_buf_, (*flist_)[index_]->number);
-    // EncodeFixed64(value_buf_+8, (*flist_)[index_]->file_size);
-    // return Slice(value_buf_, sizeof(value_buf_));
-  // }
-  // virtual Status status() const { return Status::OK(); }
- private:
-  const InternalKeyComparator icmp_;
-  //const std::vector<FileMetaData*>* const flist_;
-	const LogicalMetaData* const logical_f_;
-  uint32_t index_;
-
-  // // Backing store for value().  Holds the file number and size.
-  // mutable char value_buf_[16];
 };
 
 static Iterator* GetFileIterator(void* arg,
@@ -327,18 +214,10 @@ static Iterator* GetFileIterator(void* arg,
 Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,int level) const {
 	printf("version_set.cc exit\n");
 	exit(9);
-  // return NewTwoLevelIterator(
-      // new LevelFileNumIterator(vset_->icmp_, &logical_files_[level]),
-      // &GetFileIterator, vset_->table_cache_, options);
 }
 
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
-
-
-	//printf("version_set.cc,AddIterators, exit\n");
-	//exit(9);
-
 	for(int level=0;level<config::kNumLevels;level++){
 		for(int i=0;i<logical_files_[level].size();i++){
 			iters->push_back(
@@ -455,7 +334,7 @@ struct timespec search_begin, search_stage;
 
 int scan_th_counter=0;
 
-void  Version::Scan_back(){
+void  Version::Scan_back() {
 	mutex_for_scan.Lock();
 	uint32_t th_id=scan_th_counter++;
 	mutex_for_scan.Unlock();
@@ -578,10 +457,6 @@ void  Version::Scan_back(){
 ////**********process the search results  end//**********
 
 	}
-
-
-
-
 }
 
 int th_counter=0;
@@ -836,6 +711,100 @@ Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
                     GetStats* stats) {
+#ifdef SEARCH_PARALLEL
+  Slice ikey = k.internal_key();
+  Slice user_key = k.user_key();
+  const Comparator* ucmp = vset_->icmp_.user_comparator();
+
+
+#else 
+#ifdef READ_PARALLEL
+  pthread_t current_thread = vset_->env_->GetThreadId();
+#endif
+  Slice ikey = k.internal_key();
+  Slice user_key = k.user_key();
+  const Comparator* ucmp = vset_->icmp_.user_comparator();
+  Status s;
+
+  stats->seek_file = NULL;
+  stats->seek_file_level = -1;
+  int last_file_read_level = -1;
+
+  // We can search level-by-level since entries never hop across
+  // levels.  Therefore we are guaranteed that if we find data
+  // in an smaller level, later levels are irrelevant.
+
+  // to do range search for getting the ssts that possibly hold the key
+	// we should push the physical files to the tmp for search  
+	std::vector<PhysicalMetaData*> tmp; // to hold the files to be search
+  for (int level = 0; level < config::kNumLevels; level++) {
+		tmp.clear();
+		size_t num_logical_files = logical_files_[level].size(); 
+		if (num_logical_files == 0) continue;
+
+		// Get the list of files to search in this level
+		LogicalMetaData* const* logical_files_in_level = &logical_files_[level][0];
+    
+    // Each logical file at most have one physical responsive physical file
+		tmp.reserve(num_logical_files);
+		// may need to make sure the logical files in the level are sorted by time.
+		for (uint32_t i = 0; i < num_logical_files; i++) {
+      // get the physical files may be contain the keys.
+			LogicalMetaData* logical_f = logical_files_in_level[i];
+			if (ucmp->Compare(user_key, logical_f->smallest.user_key()) >= 0 &&
+          ucmp->Compare(user_key, logical_f->largest.user_key()) <= 0) {
+				// within logical range.
+				uint32_t index = FindFile(vset_->icmp_, *logical_f, ikey);
+				if (index >= logical_f->physical_files.size()) {
+					// do nothing. no physical file responses to this key.
+				} else if (ucmp->Compare(user_key, logical_f->physical_files[index].smallest.user_key()) >= 0) {
+          // TODO: 不比较largest的原因是二分查找，大的key，index会大    find a physical file	
+					tmp.push_back(&(logical_f->physical_files[index]));   // tmp contains pointers
+				} 
+			}
+		}
+	
+		if (tmp.empty()) continue;  //continue to search the next level
+      
+		PhysicalMetaData* const* physical_files = &tmp[0]; //points to the vector of files.
+		int num_physical_files = tmp.size();
+#ifndef READ_PARALLEL
+	  // here we get the files to search for the current level.
+    for (uint32_t i = 0; i < num_physical_files; ++i) { 
+      // begin to read the files by order. However, in lsm-forest here will be changed to concurrently.
+      PhysicalMetaData* f = physical_files[i];
+
+      Saver saver;
+      saver.state = kNotFound;
+      saver.ucmp = ucmp;
+      saver.user_key = user_key;
+      saver.value = value;
+      s = vset_->table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);	
+                      
+      if (!s.ok()) {
+        return s;
+      }
+      switch (saver.state) {
+        case kNotFound:
+          break;      // Keep searching in other files
+        case kFound:
+          return s;
+        case kDeleted:
+          s = Status::NotFound(Slice());  // Use empty error message for speed
+          return s;
+        case kCorrupt:
+          s = Status::Corruption("corrupted key for ", user_key);
+          return s;
+      }
+    }
+#else
+    
+#endif
+  } // end searching a level, may be have found and returned
+#endif
+  // end all the searching and no key found
+  return Status::NotFound(Slice());  // Use an empty error message for speed
+#if 0
 	//printf("Version_set, get, begin\n");				
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
@@ -1046,6 +1015,7 @@ if(1==method){  //Traditional way
   //here to end all the searching and no key found
 		//printf("version set, get, not found, key=%s\n",user_key.data());
   return Status::NotFound(Slice());  // Use an empty error message for speed
+#endif
 }
 
 
@@ -1993,7 +1963,7 @@ void VersionSet::GetRange2(const std::vector<LogicalMetaData*>& inputs1,
   GetRange(all, smallest, largest);
 }
 
-Iterator* VersionSet::MakeInputIterator_conca(Compaction* c) {
+Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   ReadOptions options;
   options.verify_checksums = options_->paranoid_checks;
   options.fill_cache = false;
@@ -2019,53 +1989,6 @@ Iterator* VersionSet::MakeInputIterator_conca(Compaction* c) {
   return result;
 }
 
-Iterator* VersionSet::MakeInputIterator(Compaction* c) {
-
-	fprintf(stderr,"version_set.cc, MakeInputIterator,exit\n");
-	exit(9);
-  // ReadOptions options;
-  // options.verify_checksums = options_->paranoid_checks;
-  // options.fill_cache = false;
-
-  // // Level-0 files have to be merged together.  For other levels,
-  // // we will make a concatenating iterator per level.
-  // // TODO(opt): use concatenating iterator for level-0 if there is no overlap
-  // //const int space = (c->level() == 0 ? c->inputs_[0].size() + 1 : 2);
-  // //const int space =  c->inputs_[0].size();//number of iteraters
-	// const int space =  c->logical_files_inputs_.size();//number of iteraters
-  // Iterator** list = new Iterator*[space];
-  // int num = 0;
-  // for (int which = 0; which < 2; which++) {//inputs[0] and inputs[1], however, lsm-forest only has inputs[0]
-	// if(!c->inputs_[1].empty() ){
-		// printf("versionset.cc, MakeInputIterator, inputs[1] is not empty\n");
-		// exit(1);
-	// }
-    // if (!c->inputs_[which].empty()) {//inputs[1] must be empty
-		// const std::vector<FileMetaData*>& files = c->inputs_[which];
-        // for (size_t i = 0; i < files.size(); i++) {
-          // list[num++] = table_cache_->NewIterator(
-              // options, files[i]->number, files[i]->file_size);
-		// }
-      // if (c->level() + which == 0) {//level is 0 and inputs is 0. For LSM-tree each level is like this
-        // const std::vector<FileMetaData*>& files = c->inputs_[which];
-        // for (size_t i = 0; i < files.size(); i++) {
-          // list[num++] = table_cache_->NewIterator(
-              // options, files[i]->number, files[i]->file_size);
-        // }
-      // } else {
-        // // Create concatenating iterator for the files from this level
-        // list[num++] = NewTwoLevelIterator(
-            // new Version::LevelFileNumIterator(icmp_, &c->inputs_[which]),
-            // &GetFileIterator, table_cache_, options);
-      // }
-    // }
-  // }
-  // assert(num <= space);
-  // Iterator* result = NewMergingIterator(&icmp_, list, num);
-  // delete[] list;
-  // return result;
-}
-
 bool VersionSet::NeedsCompaction(bool* locked, int& level) {
   for (int i = 1; i < config::kNumLevels; ++i) {
     if (locked[i]) {
@@ -2073,7 +1996,7 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
     }
     if (current_->logical_files_[i].size() > growth_factor && 
         current_->logical_files_[i + 1].size() <= growth_factor*1.5) {
-      printf("NeedsCompaction: %d\n", i);
+      Log(options_->info_log, "Level-%d needs Compaction\n", i);
       level = i;
       return true;
     }
@@ -2081,7 +2004,7 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
 
   if (!locked[0] && current_->logical_files_[0].size() > growth_factor) {
     level = 0;
-    printf("NeedsCompaction: 0\n");
+    Log(options_->info_log, "Level-0 needs Compaction\n");
     return true;
   }
   return false;
@@ -2181,7 +2104,7 @@ void VersionSet::SetupOtherInputs(Compaction* c) {//blank
 Compaction* VersionSet::CompactRange(
     int level,
     const InternalKey* begin,
-    const InternalKey* end) {//blank
+    const InternalKey* end) {
 	
 	printf("version_set.cc, CompactRange,exit\n");
 	exit(9);

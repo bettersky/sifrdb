@@ -6,21 +6,6 @@
 
 namespace leveldb {
 
-	int Iterator::isNewSST(){
-		printf("iterator.cc, isNewSST\n");
-	}
-	 Slice Iterator::currentSSTLargestKey(){
-	}	 
-	Slice Iterator::currentSSTSmallestKey(){
-	}
-	 Slice Iterator::nextSSTSmallestKey(){
-	}
-	 int Iterator::nextSST(){
-	}
-	int Iterator::get_sst_meta(const void **arg){
-		printf("iterator.cc, get_sst_meta\n");
-	}
-
 Iterator::Iterator() {
   cleanup_.function = NULL;
   cleanup_.next = NULL;

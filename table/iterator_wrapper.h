@@ -27,31 +27,25 @@ class IteratorWrapper {
   // Takes ownership of "iter" and will delete it when destroyed, or
   // when Set() is invoked again.
 
-	int isNewSST(){
-		return iter_->isNewSST();
+	bool IsNewSSTTable() {
+		return iter_->IsNewSSTTable();
 	}
-	 Slice currentSSTLargestKey(){
-		return iter_->currentSSTLargestKey();
-		
+
+  Slice currentSSTLargestKey() {
+    return iter_->currentSSTLargestKey();
 	}
-	 Slice currentSSTSmallestKey(){
-		return iter_->currentSSTSmallestKey();
-		
+  
+  Slice currentSSTSmallestKey(){
+    return iter_->currentSSTSmallestKey();
 	}
-	 Slice nextSSTSmallestKey(){
+	
+  Slice nextSSTSmallestKey(){
 		return iter_->nextSSTSmallestKey();
 	}
 
-	int next_sst();
-	
-	int get_sst_meta(const void **arg){
-		//printf("iterator_wrapper.h, get_sst_meta\n");
-		iter_->get_sst_meta(arg);
-	}
-	
+	void NextSSTTable();
 	
   void Set(Iterator* iter) ;
-
 
   // Iterator interface methods
   bool Valid() const ;

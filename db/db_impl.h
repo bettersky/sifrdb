@@ -121,7 +121,7 @@ class DBImpl : public DB {
   Status DoCompactionWork(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 	  
-	Status Conca_merge( CompactionState* compact);
+	Status ConcatenatingCompaction( CompactionState* compact);
 
   Status OpenCompactionOutputFile(CompactionState* compact);
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
