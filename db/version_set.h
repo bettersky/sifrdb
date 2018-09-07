@@ -174,59 +174,6 @@ class Version {
   Version* next_;               // Next version in linked list
   Version* prev_;               // Previous version in linked list
   int refs_;                    // Number of live refs to this version
- //************eMLMT scan begin*************************************************************************************
-
-bool scan_has_created;
-volatile int scan_thread_idle;
-
-pthread_t pth_scan[100];
-void Create_scan_threads(int thread_num);
-void Scan_back();
-LogicalMetaData *scan_logical_files_set[1000];
-
-static void* Scan_Back_starter(void *arg){
-	reinterpret_cast<Version*>(arg)->Scan_back();
-	return NULL;
-}
-
-int scan_logical_file_total;
-
-double alloc_ratios[100];
-
-struct Scan_item{
-
-		ReadOptions options;
-		const Comparator* ucmp;
-
-		Slice ikey;		
-		int logical_file_counter;//开始为0，每取一次+1，指示sst的序号		
-		int final_state;		
-		volatile  int should_pop;
-		int found_flag;
-	
-		std::string *value;
-		int fingerprint;
-		int search_result_of_ssts[100]={0};
-
-		int scan_amount;
-		int finished;
-
-
-		Scan_item(){
-			logical_file_counter=0;
-			should_pop=0;
-			found_flag=0;
-			final_state=0;
-			scan_amount=0;
-			finished=0;
-		}		
-};
-
-Scan_item* scan_right;
-
-port::Mutex mutex_for_scan;
-port::CondVar cv_for_scan;
-//************eMLMT end*************************************************************************************
 
 //************LSM-forest begin*************************************************************************************
 //Env* env_forest;
@@ -312,13 +259,8 @@ public:
         file_to_compact_level_(-1),
         compaction_score_(-1),
         compaction_level_(-1),
-		has_created(false),
-
-		cv_for_scan(&mutex_for_scan),
-		//cv_for_delaying(&mutex_for_searching_queue),
-		cv_for_searching(&mutex_for_searching_queue){
-		//printf("Version_set.h, construct Version\n");
-		
+        has_created(false),
+        cv_for_searching(&mutex_for_searching_queue) {
   }
 
   ~Version();

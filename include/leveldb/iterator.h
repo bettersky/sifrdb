@@ -25,17 +25,18 @@ class Iterator {
  public:
   Iterator();
   virtual ~Iterator();
+  
+  virtual Slice currentSSTSmallestKey() {}
+	virtual Slice currentSSTLargestKey() {}
+	virtual Slice nextSSTSmallestKey() {}
+  virtual bool IsNewSSTTable() { return false;}
+	virtual void NextSSTTable() {}
+	virtual bool IsOverlapped() { return false;}
+  virtual PhysicalMetaData* GetSSTTableMeta() { return NULL;}
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
-	virtual Slice currentSSTSmallestKey() {}
-	virtual Slice currentSSTLargestKey() {}
-	virtual Slice nextSSTSmallestKey() {}
-  virtual bool IsNewSSTTable() {return false;}
-	virtual void NextSSTTable() {}
-	virtual bool IsOverlapped() {return false;}
-  virtual PhysicalMetaData* GetSSTTableMeta() {return NULL;}
-
+	
   virtual bool Valid() const = 0;
 
   // Position at the first key in the source.  The iterator is Valid()

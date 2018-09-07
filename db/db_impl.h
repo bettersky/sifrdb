@@ -35,8 +35,6 @@ class DBImpl : public DB {
   virtual Status Get(const ReadOptions& options,
                      const Slice& key,
                      std::string* value);
-  virtual Status Scan(const ReadOptions& options,
-                     const Slice& key, void **buf, int amount);
 
   virtual Iterator* NewIterator(const ReadOptions&);
   virtual const Snapshot* GetSnapshot();
@@ -44,7 +42,6 @@ class DBImpl : public DB {
   virtual bool GetProperty(const Slice& property, std::string* value);
   virtual void GetApproximateSizes(const Range* range, int n, uint64_t* sizes);
   virtual void CompactRange(const Slice* begin, const Slice* end);
-
 
    virtual int getLevel();
    virtual int test(void *arg);

@@ -754,7 +754,6 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
     if (input->IsNewSSTTable()) {
       if (input->IsOverlapped() == 0) {
         // no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
-        //const void *arg;  
         PhysicalMetaData *phy_file = input->GetSSTTableMeta();
         // TODO : seqwrite bug??? 
         //FinishCompactionOutputFile(compact, input);
@@ -941,33 +940,6 @@ Iterator* DBImpl::TEST_NewInternalIterator() {
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
   MutexLock l(&mutex_);
   return versions_->MaxNextLevelOverlappingBytes();
-}
-
-
-Status DBImpl::Scan(const ReadOptions& options,
-                     const Slice& key, void **buf, int amount) {
-	Status s;
-	//printf("dbimpl, scan begin\n");
-
-
-  SequenceNumber snapshot;
-  if (options.snapshot != NULL) {
-    snapshot = reinterpret_cast<const SnapshotImpl*>(options.snapshot)->number_;
-  } else {
-    snapshot = versions_->LastSequence();
-  }
-
-
-  Version::GetStats stats;
-
-	LookupKey lkey(key, snapshot);
-
-  Version* current = versions_->current();
-
-	current->Scan(options, lkey, buf, &stats, amount);
-
-	return s;
-
 }
 
 Status DBImpl::Get(const ReadOptions& options,
