@@ -21,14 +21,22 @@
 #include <deque>
 #include "db/dbformat.h"
 #include "db/version_edit.h"
+#include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "table/filter_block.h"
 
+//#define SEARCH_PARALLEL
+#ifdef SEARCH_PARALLEL
+#define NUM_READ_THREADS 16
+#endif
+
 //#define READ_PARALLEL
+
 #ifdef READ_PARALLEL
 #define NUM_READ_THREADS 16
 #endif
+
 namespace leveldb {
 
 namespace log { class Writer; }
@@ -176,68 +184,54 @@ class Version {
   int refs_;                    // Number of live refs to this version
 
 //************LSM-forest begin*************************************************************************************
-//Env* env_forest;
 
-//typedef std::deque<ForestItem> ForestQueue;
-//ForestQueue queue_;
-
-#define Max_Thread_Num 100
-pthread_t pth_forest[Max_Thread_Num];
-void Fores_thread_create(int thread_num);
-void Forest_back();
-static void* Back_starter(void *arg){
-	reinterpret_cast<Version*>(arg)->Forest_back();
-	return NULL;
-}
-
-bool has_created;
-uint64_t logical_file_total;
-volatile int thread_idle;
+  #define Max_Thread_Num 100
+  pthread_t pth_forest[Max_Thread_Num];
+  void Fores_thread_create(int thread_num);
+  void Forest_back();
+  void SearchThread();
+  static void SearchWrapper(void *version) {
+    reinterpret_cast<Version*>(version)->SearchThread();
+  }
+  bool has_created;
+  uint64_t logical_file_total;
+  volatile int thread_idle;
+      
+  LogicalMetaData *logical_files_set[1000];
 		
-LogicalMetaData *logical_files_set[1000];
+  struct Searching_item {
+    ReadOptions options;
+    const Comparator* ucmp;
+    Slice ikey;		
+    int volatile logical_file_counter;//开始为0，每取一次+1，指示sst的序号		
+    int final_state;		
+    volatile  int should_pop;
+    int found_flag;
+    std::string *value;
+    volatile int fingerprint;
+    int search_result_of_ssts[100] = {0};
+    Searching_item *next;
+    Searching_item *pre;
 
-		
-struct Searching_item {
+    Searching_item() {
+      logical_file_counter = 0;
+      should_pop = 0;
+      found_flag = 0;
+      final_state = 0;
+      next = NULL;
+      pre = NULL;
+    }	
+  };
 
-		ReadOptions options;
-		const Comparator* ucmp;
+  //Searching_item *right;//pints to the last item of the searching items
+  Searching_item *searching_left = NULL;
+  Searching_item *searching_right = NULL;
+  uint64_t queue_size = 0;
 
-		Slice ikey;		
-		int volatile logical_file_counter;//开始为0，每取一次+1，指示sst的序号		
-		int final_state;		
-		volatile  int should_pop;
-		int found_flag;
-	
-		std::string *value;
-		volatile int fingerprint;
-		int search_result_of_ssts[100]={0};
-		
-		 Searching_item *next;
-		 Searching_item *pre;
-
-
-		Searching_item(){
-			logical_file_counter=0;
-			should_pop=0;
-			found_flag=0;
-			final_state=0;
-			next=NULL;
-			pre=NULL;
-			
-		}		
-};
-
-//Searching_item *right;//pints to the last item of the searching items
- Searching_item *searching_left=NULL;
- Searching_item *searching_right=NULL;
-uint64_t queue_size=0;
-
-port::Mutex mutex_for_searching_queue;
-port::CondVar cv_for_searching;
+  port::Mutex mutex_for_searching_queue;
+  port::CondVar cv_for_searching;
 
 //************LSM-forest end*************************************************************************************
-
-
   // List of files per level
 public:
   //std::vector<FileMetaData*> files_[config::kNumLevels];
@@ -261,6 +255,11 @@ public:
         compaction_level_(-1),
         has_created(false),
         cv_for_searching(&mutex_for_searching_queue) {
+#ifdef SEARCH_PARALLEL
+    for (int i = 0; i < NUM_READ_THREADS; ++i) {
+      Env::Default()->StartThread(&Version::SearchWrapper, this);
+    }
+#endif
   }
 
   ~Version();
@@ -478,10 +477,8 @@ class Compaction {
   // is successful.
   void ReleaseInputs();
 
-	void DoGroup();
-
 	std::vector<LogicalMetaData*> logical_files_inputs_; 
-	std::vector< std::vector<PhysicalMetaData*> > groups;
+	std::vector<std::vector<PhysicalMetaData*> > groups;
 
  private:
   friend class Version;

@@ -43,104 +43,73 @@ int fly[30];
 int scan_amount=0;
 long long read_mb(char *dev);
 
-int space_using(const char *dev) {
-	//printf("db_bench, space_using begin\n");
-	int res = 0;
-	FILE* fp;
-	char command[128];
-	sprintf(command,"df -l|grep %s",dev);
-	fp = popen(command, "r");
+extern uint64_t diskTrafficBytes;
+extern uint64_t bytes_written_wa;
+extern uint64_t bytes_input_wa;
 
-	char str[512];
-	fgets(str, sizeof(str)-1, fp);
-	fclose(fp);
-
-	char *pch=strtok(str," ");
-	int i = 0;
-	for(i=0; i<2; i++){
-		pch = strtok(NULL," ");
-	}
-
-	//printf("pch=%s\n",pch);
-	res=atoi(pch)/1024;
-	//printf("db_bench, space_using end\n");
-	
+int space_using(const char *dir) {
+  FILE* fp;
+  int res; 
+  char command[128];
+  sprintf(command,"du -lm %s | grep '[0-9]' ", dir);
+  fp = popen(command, "r");
+  
+  char str[512];
+  if ( fgets(str, sizeof(str), fp) != NULL ) {
+    res = atoi(str);
+  }
+  fclose(fp);
   return res;
 }
 
-int mem_using(int which) {//1~ 6 : total        used        free      shared  buff/cache   available
-	//printf("db_bench, mem_using begin\n");
+char result[200];
+char* mem_using() {
+  FILE* fp;
+  int res = 0;
+  int mem[3];
+  int i = 0;
+  int iPid = (int) getpid();
 
-	int res=0;
-	FILE* fp;
-	char command[128];
-	//sprintf(command,"df -l|grep %s",dev);//KB
-	sprintf(command,"free |grep Mem");//KB
-	fp = popen( command, "r");
+  char command[128];
+  sprintf(command,"cat /proc/%d/status | grep -E 'VmSize|VmRSS|VmData' | grep -o '[0-9]\\+'", iPid);
+  fp = popen(command, "r");
 
-	char str[512];
-	fgets(str, sizeof(str)-1, fp);//Mem:      131917148      527240    26452164       13400   104937744   130635384
-	fclose(fp);
+  char str[512];
+  while ( fgets(str, sizeof(str), fp) != NULL && i < 3) {
+    res = atoi(str);
+    mem[i] = res/1024;
+    ++i;
+  }
+  snprintf(result, sizeof(result), "VmSize: %6d MB VmRSS: %6d MB VmData: %6d MB",
+          mem[0], mem[1], mem[2]);
 
-	char *pch=strtok(str," ");
-	int i=0;
-	for(i=0;i<which;i++){
-		pch=strtok(NULL," ");
-	}
-
-	//printf("pch=%s\n",pch);
-	res=atoi(pch)/1024;//MB
-	//printf("db_bench, mem_using end\n");
-
-	return res;
-
+  //sprintf(command, "free -h | grep Mem | awk '{print $3}'");
+  //fp = popen(command, "r");
+  //if( fgets(str, sizeof(str), fp) != NULL ) {
+  //  ;
+  //}
+  snprintf(result, sizeof(result), "VmSize: %6d MB VmRSS: %6d MB VmData: %6d MB",
+      mem[0], mem[1], mem[2]);
+  //snprintf(result, sizeof(result), "VmSize: %6d MB VmRSS: %6d MB VmData: %6d MB Free (used): %s",
+  //    mem[0], mem[1], mem[2], str);
+  fclose(fp);
+  return result; 
 }
 
-int top(char **result) {//1~ 10 :  PR  NI    VIRT    RES    SHR S  (7)%CPU %MEM     TIME+ COMMAND
-	//printf("db_bench, mem_using begin\n");
+long long read_mb(char *dev) {
 	FILE* fp;
 	char command[128];
-	//sprintf(command,"df -l|grep %s",dev);//KB
-	sprintf(command,"free |grep Mem");//KB
-	fp = popen( command, "r");
-
+  long long res = 0;
+  //sector, 512B
+	sprintf(command, "cat /proc/diskstats | grep %s | awk '{print $8}'", dev);
+	fp = popen(command, "r");
 	char str[512];
-	fgets(str, sizeof(str)-1, fp);//PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM     TIME+ COMMAND
-	fclose(fp);
-
-	char *pch=strtok(str," ");
-	strcpy(result[0],pch);
-	int i;
-	for(i=1;pch != NULL;i++){
-		pch=strtok(NULL," ");
-		strcpy(result[i],pch);
-	}
-
-}
-
-long long read_mb(char *dev){
-
-	int res=0;
-	FILE* fp;
-	char command[128];
-	sprintf(command,"cat /proc/diskstats |grep %s",dev);//sector, 512B
-	
-	fp = popen( command, "r");
-
-	char str[512];
-	fgets(str, sizeof(str)-1, fp);
-	fclose(fp);
-
-	char *pch=strtok(str," ");
-	int i=0;
-	for(i=0;i<5;i++){
-		pch=strtok(NULL," ");
-	}
-
-	long long sectors= strtoll(pch,NULL,10);
-	
-	return sectors;	
-
+  if ( fgets(str, sizeof(str), fp) != NULL) {
+    res = atoi(str);
+  }
+  fclose(fp);
+  res = res/1024/1024*512;
+  return res;
 }
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
@@ -1031,28 +1000,7 @@ void DoLoad(ThreadState* thread, bool seq){
       
       // int *num_in_levels=(int*)arg;
       // int sequence=0;
-      
-        for(int i=0;i<=getLevel();i++){
-      
-          int logical_num=get_dbimpl()->versions_->current_->logical_files_[i].size();
-        
-        printf("%d{",logical_num);
-        fprintf(stats_log_, "%d{",logical_num);
-        
-          for(int j=0;j<logical_num;j++){
-          printf("%d,", get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-          fprintf(stats_log_,"%d,",  get_dbimpl()->versions_->current_->logical_files_[i][j]->physical_files.size());
-          }
-      
-          printf("}");
-        fprintf(stats_log_,"}");
-        }
-      
-      printf("]\n");
-      fprintf(stats_log_, "]\n");
-      
-      
-      
+      PrintStats("leveldb.sstables");
       fflush(stats_log_);
     }
     
@@ -1270,7 +1218,7 @@ void print_write_tail() {
 }
 
 void DoWrite(ThreadState* thread, bool seq) {
-  fprintf(stats_log_, "db_bench: DoWrite,begin\n");
+  fprintf(stats_log_, "db_bench start writing\n");
   if (num_ != FLAGS_num) {
     char msg[100];
     snprintf(msg, sizeof(msg), "(%d ops)", num_);
@@ -1280,15 +1228,15 @@ void DoWrite(ThreadState* thread, bool seq) {
   RandomGenerator gen;
   WriteBatch batch;
   Status s;
+  uint64_t now_s, end_s;
+  float w_amp;
+  char* mem_use;
+  int dir_size;
   int64_t bytes = 0;
 
-  srand(time(NULL));
-  uint64_t i;
-  uint64_t ops = 0;
+  now_s = leveldb::Env::Default()->NowMicros();
 
-  clock_gettime(CLOCK_MONOTONIC,&begin); //begin insert , so begin counting
-
-  for (i = 0; i < num_; i += entries_per_batch_) {
+  for (int i = 0; i < num_; i += entries_per_batch_) {
     batch.Clear();
     for (int j = 0; j < entries_per_batch_; j++) {
       const int k = seq ? i+j : (thread->rand.Next() % FLAGS_num);
@@ -1297,106 +1245,35 @@ void DoWrite(ThreadState* thread, bool seq) {
       batch.Put(key, gen.Generate(value_size_));
       bytes += value_size_ + strlen(key);
       thread->stats.FinishedSingleOp();
-      fprintf(stats_log_, "key: %s \n", key);
+      //fprintf(stats_log_, "key: %s \n", key);
     }
         
     s = db_->Write(write_options_, &batch);
       
-    ops++;
-    if(0 == ops % FLAGS_stats_interval) {
-      clock_gettime(CLOCK_MONOTONIC, &stage); 
-      double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-      
-      //printf("ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name),get_fly(),  get_sst_num());
-      //fprintf(stats_log_,"ops:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [",ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(recorder_name), get_fly(),  get_sst_num());
-      // int *num_in_levels=(int*)arg;
-      // int sequence=0;
+    if(0 == i % FLAGS_stats_interval) {
+      end_s = Env::Default()->NowMicros();
+      dir_size = space_using(FLAGS_db);
+      w_amp = (bytes_input_wa == 0) ? 0.0 : (float)bytes_written_wa/bytes_input_wa;
+      mem_use = mem_using();
+      // printf("stage_time: %010d total_time= %10.1f s  wa: %3.1f w_amp: %3.1f %s space: %10d MB\n",
+      //         i, (float)(end_s - now_s)/1000000.0, 
+      //         (float)diskTrafficBytes/bytes, w_amp, 
+      //         mem_use, dir_size);
+      fprintf(stats_log_, "stage_time: %010d total_time: %10.1f s  wa: %3.1f w_amp: %3.1f %s space: %10d MB\n",
+              i, (float)(end_s - now_s)/1000000.0, 
+              (float)diskTrafficBytes/bytes, w_amp, 
+              mem_use, dir_size);
       PrintStats("leveldb.sstables");
     }
         
     if (!s.ok()) {
-      fprintf(stderr, " I am db_bench.cc,  do write, put error: %s\n", s.ToString().c_str());
-      printf("I am db_bench.cc, i=%ld\n",i);
-      //s=Status::OK();
+      fprintf(stderr, "put error: %s\n", s.ToString().c_str());
       exit(1);
     }
   }
 
   fclose(stats_log_);
-  printf("write finished\n");
-  printf("I am db_bench.cc, i=%ld\n", i);
   thread->stats.AddBytes(bytes);
-  //print_write_tail();
-
-  //clock_gettime(CLOCK_MONOTONIC,&end); //begin insert , so begin counting
-  //duration=( (int)end.tv_sec+((double)end.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-
-  //printf(">>>>>>\n");
-  //printf("DoWrite total time: %f s\n",duration);
-  // printf("In db_bench.cc,write_total: %llu\n",write_total);
-  // printf("In db_bench.cc,write_total_log: %llu\n",write_total_log);
-  // printf("In db_bench.cc,block layer thoughput: %.2f\n",(double)write_total/duration/1024/1024);
-  // printf("<<<<<<<<<<\n");
-  // printf("In envposix, Sync-sync time: %f s\n",durations[35]);
-  // printf("In envposix, Sync-counter time: %f s\n",durations[36]);
-  // printf("In db_impl.cc, int, in Write ,mem total time: %f s\n",durations[4]);
-  // printf("In db_impl.cc, int, in Write ,makeroom total time: %f s\n",durations[2]);
-  // printf("In db_impl.cc, int, in Write ,log total time: %f s\n",durations[3]);
-
-  // printf("In db_impl.cc, write_total time:%f s\n",durations[1]);
-
-  // printf("In db_impl.cc, finish compaction 1:%f\n",durations[40]);
-  // printf("In db_impl.cc, finish compaction 2:%f\n",durations[41]);
-  // printf("In db_impl.cc, finish compaction 3:%f\n",durations[42]);
-  // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
-
-  // printf("----DoCompactionWork:%f s\n",durations[19]);
-  // printf("Total	write_total	makeroom	log	mem	back	sync\n");
-  // printf("%f	%f	%f	%f	%f	%f	%f\n",duration,durations[1],durations[2],durations[3],durations[4], durations[43],durations[35]);
-  
-  // printf("In db_impl.cc, back ground call:%f\n",durations[43]);
-  // printf("In db_impl.cc, back compaction call:%f\n",durations[71]);
-  // printf("In db_impl.cc, do compaction call:%f\n",durations[72]);
-  /*
-  printf("In db_impl.cc, write total time:%f s\n",durations[1]);
-  printf("In db_impl.cc, int, in Write ,MakeRoomForWrite total time:%f s\n",durations[2]);
-  printf("----MakeRoomForWrite2:%f s\n",durations[10]);
-  printf("----while:%f s\n",durations[14]);
-  printf("----if1:%f s\n",durations[15]);
-  printf("----blank:%f s\n",durations[16]);
-  printf("----wait1:%f s\n",durations[13]);
-  printf("----wait2:%f s\n",durations[12]);
-  printf("----NewWritableFile:%f s\n",durations[11]);
-  printf("----sleep:%f s\n",durations[9]);
-  printf("----before MaybeScheduleCompaction:%f s\n",durations[8]);
-  printf("----MaybeScheduleCompaction:%f s\n",durations[7]);
-
-  printf("----BackgroundCompaction:%f s\n",durations[17]);
-  printf("----CompactMemTable:%f s\n",durations[18]);
-  printf("----DoCompactionWork:%f s\n",durations[19]);
-  printf("----DoCompactionWork,Ndrop:%f s\n",durations[20]);
-  printf("----DoCompactionWork,Ndrop:Add:%f s\n",durations[21]);
-  printf("In envposix, Flush time:%f s\n",durations[34]);
-  printf("In envposix, Sync-Flush time:%f s\n",durations[36]);
-  printf("In envposix, Sync-sync time:%f s\n",durations[35]);
-  printf("----DoCompactionWork,Ndrop:T0:%f s\n",durations[24]);
-  printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile1:%f s\n",durations[25]);
-  printf("----DoCompactionWork,Ndrop:T0:OpenCompactionOutputFile2:%f s\n",durations[26]);
-  printf("----open_file:%f s\n",durations[27]);
-  printf("----acess:%f s\n",durations[29]);
-  printf("----create_entry:%f s\n",durations[28]);
-  printf("----DoCompactionWork,Ndrop:T1:%f s\n",durations[22]);
-  printf("----DoCompactionWork,Ndrop:T2:%f s\n",durations[23]);
-  printf("----T2:FinishCompactionOutputFile:S1:%f s\n",durations[30]);
-  printf("----T2:FinishCompactionOutputFile:delete:%f s\n",durations[31]);
-  printf("----T2:FinishCompactionOutputFile:sync:%f s\n",durations[32]);
-  printf("----T2:FinishCompactionOutputFile:close:%f s\n",durations[33]);
-  printf("In db_impl.cc, int, in Write ,log total time:%f s\n",durations[3]);
-  printf("In db_impl.cc, int, in Write ,log sync total time:%f s\n",durations[5]);
-  printf("In db_impl.cc, int, in Write ,mem total time:%f s\n",durations[4]);
-
-  printf("In db_impl.cc, int, in Write ,flash_write time:%f s\n",durations[6]);
-  */
 }
 
   void ReadSequential(ThreadState* thread) {

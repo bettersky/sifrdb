@@ -1,3 +1,8 @@
+SifrDB: A Unified Solution for Write-Optimized Key-Value Stores in Large Datacenter
+=========
+
+Source code for the paper "SifrDB: A Unified Solution for Write-Optimized Key-Value Stores in Large Datacenter" that is accepted by SoCC'18.
+
 **LevelDB is a fast key-value storage library written at Google that provides an ordered mapping from string keys to string values.**
 
 Authors: Sanjay Ghemawat (sanjay@google.com) and Jeff Dean (jeff@google.com)

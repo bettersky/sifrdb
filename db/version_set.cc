@@ -137,7 +137,7 @@ class Version::LogicalSSTNumIterator : public Iterator {
                        const LogicalMetaData* flist)
       : icmp_(icmp),
         flist_(flist),
-        index_(flist->physical_files.size()) {        // Marks as invalid
+        index_(flist->physical_files.size()) {
   }
 
 	virtual Slice currentSSTLargestKey() {
@@ -318,18 +318,12 @@ static bool NewestFirst(LogicalMetaData* a, LogicalMetaData* b) {
   // }
 // }
 
-void Version::Fores_thread_create(int thread_num){//thread_num is TN in version_set.h
-	for(int i=0;i<thread_num;i++){
-		pthread_create(&pth_forest[i], NULL,  &Version::Back_starter, this);
-	}
-}
-
 struct timespec search_begin, search_stage;
 
 int scan_th_counter=0;
 
 int th_counter=0;
-void Version::Forest_back(){
+void Version::SearchThread() {
 
 	mutex_for_searching_queue.Lock();
 		uint32_t th_id=th_counter++;
@@ -433,7 +427,7 @@ void Version::Forest_back(){
 						saver_.ucmp->Compare(saver_.user_key, physical_f->largest.user_key()) > 0) {//Not contained in this physical file.
 							//saver_.state=kNotFound;				
 					}
-					else{//Possibely contained in this SST file.
+					else{  //Possibely contained in this SST file.
 						uint64_t physical_file_number= physical_f->number;
 						uint64_t physical_file_size= physical_f->file_size;
 						s = vset_->table_cache_->Get(options_local, physical_file_number, physical_file_size, ikey_local, &saver_, SaveValue);
@@ -517,6 +511,58 @@ Status Version::Get(const ReadOptions& options,
   Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
+  Searching_item *new_item= new Searching_item();;
+  new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.		
+  new_item->options= options;//provide argument for thread search		
+  new_item->ucmp=ucmp;
+  int thread_fingerprint= pthread_self();//Using thread id would be more simpler and safer.
+  new_item->fingerprint= thread_fingerprint;
+  //printf("right->fingerprint %d, th_id=%d\n",new_item->fingerprint, pthread_self());
+mutex_for_searching_queue.Lock();
+    new_item->next= searching_left;//Either searching_left is null or not.			
+    
+    if(searching_left!=NULL){//insert the new item
+      searching_left->pre=new_item;
+    }
+    
+    searching_left=new_item;
+    if(searching_right==NULL) {
+      searching_right=new_item;
+    }
+    
+    queue_size++;
+    mutex_for_searching_queue.Unlock();
+		//printf("version set, 22222222, left=%p,right=%p\n", searching_left,searching_right);
+
+//***************************************construct the search item end
+		if(queue_size>10){
+			printf("versionset, Get, queue_size=%d\n", queue_size);	
+		}
+		//printf("versionset.c, before SignalAll, thread_idle=%d, key=%s, queue_size=%d, should_pop=%d,rightKey=%s,fp=%d,popfp=%d\n",thread_idle, user_key.data(),queue_size,searching_right->should_pop,searching_right->ikey.data(),thread_fingerprint,searching_right->fingerprint);
+		cv_for_searching.SignalAll();	//Wake the searching threads. This makes sure that the new item will be serviced. if(thread_idle> read_thread-2) 
+		uint64_t counter=0; 
+		while(searching_right!=NULL && (searching_right->should_pop!=1 || searching_right->fingerprint != thread_fingerprint) ){//poll the result status;  
+			//cv_for_searching.SignalAll();
+				//Go on polling		
+				usleep(1);
+		}
+		
+  mutex_for_searching_queue.Lock();	//Needing lock because the searching threads may be accessing the item.
+		Searching_item *temp = searching_right;//for delete
+		searching_right=searching_right->pre;		
+		if(searching_right==NULL){//The last item is deleted, and searching_left also point to that item.
+			searching_left=NULL;
+		}		
+		queue_size--;
+  mutex_for_searching_queue.Unlock();
+
+		int status=temp->final_state;
+		value=temp->value;
+		delete temp;
+	if(status==1){
+		return Status::OK();
+	}
+	else return Status::NotFound(Slice());
 
 #else 
 #ifdef READ_PARALLEL
@@ -1075,7 +1121,7 @@ class VersionSet::Builder {
 
   // Apply all of the edits in *edit to the current state.
   //  edit contains added logical files and deleted logical files
-  void Apply(VersionEdit* edit) {   
+  void Apply(VersionEdit* edit) {
     // Delete files
     const VersionEdit::DeletedLogicalFileSet& del = edit->deleted_logical_files_;
     for (VersionEdit::DeletedLogicalFileSet::const_iterator iter = del.begin();
@@ -1086,7 +1132,7 @@ class VersionSet::Builder {
     }
 
     // Add new files
-	  for(int i = 0; i < edit->new_logical_files_.size(); i++) {
+	  for (int i = 0; i < edit->new_logical_files_.size(); i++) {
       const int level = edit->new_logical_files_[i].first;
       LogicalMetaData* f = new LogicalMetaData(edit->new_logical_files_[i].second); 
       f->refs = 1;
@@ -1816,12 +1862,12 @@ Compaction* VersionSet::PickCompaction(int level) {
   assert(level+1 < config::kNumLevels);
   Compaction* c = new Compaction(level);
 
-  //我们可能想先选择较老的10个文件
+  // 我们可能想先选择较老的10个文件
   for (int i = 0; i < growth_factor; i++) {
     LogicalMetaData* f = current_->logical_files_[level][i];
-    c->logical_files_inputs_.push_back(f);  //mei, push multi files 
+    c->logical_files_inputs_.push_back(f);
   }
-  if (c->logical_files_inputs_.empty()) {   //exception
+  if (c->logical_files_inputs_.empty()) {
     // Wrap-around to the beginning of the key space
     printf("versionset, pick, wrap back\n");
     exit(1);
@@ -1971,16 +2017,9 @@ bool Compaction::IsTrivialMove() const {//we have no need for this function
 }
 
 void Compaction::AddInputDeletions(VersionEdit* edit) {
-
-	for(int i=0;i<logical_files_inputs_.size();i++){
-		edit->DeleteLogicalFile(level_ , logical_files_inputs_[i]->number);
-
+	for (int i = 0; i < logical_files_inputs_.size(); i++) {
+		edit->DeleteLogicalFile(level_, logical_files_inputs_[i]->number);
 	}
-  // for (int which = 0; which < 2; which++) {
-    // for (size_t i = 0; i < inputs_[which].size(); i++) {
-      // edit->DeleteFile(level_ + which, inputs_[which][i]->number);
-    // }
-  // }
 }
 
 bool Compaction::IsBaseLevelForKey(const Slice& user_key) {
@@ -2034,88 +2073,4 @@ void Compaction::ReleaseInputs() {
     input_version_ = NULL;
   }
 }
-
-void Compaction::DoGroup() {
-		const Comparator* user_cmp = input_version_->vset_->icmp_.user_comparator();
-		int num=logical_files_inputs_.size();//number of the logical files
-		//build iterator for the physical files of each logical_files_inputs_
-		//std::vector<PhysicalMetaData>::iterator it[num];
-		//PhysicalMetaData* advancer[num];
-		//printf("vesion_set, num=%d\n", num);
-		//exit(9);
-		int advancer[num];
-		int sizes[num];
-		for(int i=0;i<num;i++){
-			//advancer[i]= &(logical_files_inputs_[i]->physical_files[0]);
-			
-			advancer[i]=0;
-			sizes[i]=logical_files_inputs_[i]->physical_files.size();
-			//printf("vesion_set, size[i]=%d,file=%d\n", logical_files_inputs_[i]->physical_files.size(), logical_files_inputs_[i]->physical_files[0].number); 
-		}		
-		std::vector<PhysicalMetaData*>  participate_physical_files;
-		participate_physical_files.clear();
-
-		
-		while(1){//push all the physical files to the participate_physical_files by their first key
-			//PhysicalMetaData* next=NULL;//reset the next to null
-			int next_indicator=-1;
-			for(int i=0;i<num;i++){//for each logical file
-				if(advancer[i] >= sizes[i]){//all physical files of this logical file has been pushed
-					continue;
-				}
-				//here it[i] must not be null
-				if(next_indicator==-1){//for the first time, next is null
-					//next=it[i];
-					next_indicator=i;
-				}
-				else{
-					PhysicalMetaData *cur_visit= &(logical_files_inputs_[i]->physical_files[advancer[i]]);
-					PhysicalMetaData *cur_next = &(logical_files_inputs_[next_indicator]->physical_files[advancer[next_indicator]]);
-					if(user_cmp->Compare(cur_visit->smallest.user_key(),cur_next->smallest.user_key())<0){
-						next_indicator=i;
-					}
-				}			
-			}
-			//next=it[next_indicator];
-			//advance this iterater.
-			//now we get the next smallest physical file
-			if(next_indicator==-1){//all its are null
-				break;
-			}
-			else {
-				participate_physical_files.push_back(&( logical_files_inputs_[next_indicator]->physical_files[advancer[next_indicator]]) );//the physical file of the next_indicator.logical in poition of its advancer
-			//it[next_indicator]++;
-				advancer[next_indicator]++;
-			}
-			
-		}
-		//now we get the participate_physical_files.
-		//printf("vesion_set, participate_physical_files size=%d\n", participate_physical_files.size());
-		// for(int i=0;i<participate_physical_files.size();i++){
-				// printf("file=%d, smallest=%s, largest=%s\n",participate_physical_files[i]->number, participate_physical_files[i]->smallest.user_key().data(), participate_physical_files[i]->largest.user_key().data());
-		// }
-			std::vector<PhysicalMetaData*> temp_group;
-			temp_group.clear();
-			//temp_group.push_back(participate_physical_files[0]);
-			for(int i=0;i<participate_physical_files.size();i++){
-				//before push this physical file, we check the temp_group to see if a new group should be split
-				//if this physical file's smallest key is bigger than the largest key of the last file in temp_group, new group is split
-				//that is, this physical file is not overlapped with the last file in temp_group.
-				if(temp_group.size()!=0 && user_cmp->Compare(participate_physical_files[i]->smallest.user_key(),temp_group.back()->largest.user_key())>0 ){//a new group
-					//printf("i=%d\n",i);
-					groups.push_back(temp_group);
-					temp_group.clear();
-				}
-				//no matter what, now we push this physical files to the temp_group.
-				temp_group.push_back(participate_physical_files[i]);
-				
-			}
-
-			//printf("temp_group size=%d, groups size=%d\n",temp_group.size(),groups.size());
-			groups.push_back(temp_group);//push the last one
-			//printf("temp_group size=%d, groups size=%d\n",temp_group.size(),groups.size());
-			//
-			//while(1)
-}
-
 }  // namespace leveldb

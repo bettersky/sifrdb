@@ -118,6 +118,7 @@ class DBImpl : public DB {
   Status DoCompactionWork(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 	  
+  void EarlyCleaning(std::vector<uint64_t>& clean);
 	Status ConcatenatingCompaction( CompactionState* compact);
 
   Status OpenCompactionOutputFile(CompactionState* compact);
@@ -134,38 +135,35 @@ class DBImpl : public DB {
   bool owns_cache_;
   const std::string dbname_;
  //------------------------------------------------lsm-forest begin-------------------------------------
+  Status BackgroundCompaction(int level) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void  Compact_thread_create(int thread_num);
 
-Status BackgroundCompaction(int level) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-void  Compact_thread_create(int thread_num);
+  public:
+  int latest_sst_num[config::kNumLevels];
 
-public:
-int latest_sst_num[config::kNumLevels];
+  static void CompactLevelWrapper(void *db) {
+    reinterpret_cast<DBImpl*>(db)->CompactLevelThread();
+  }
 
-// new 
-static void CompactLevelWrapper(void *db){
-	reinterpret_cast<DBImpl*>(db)->CompactLevelThread();
-}
+  static void CompactMemTableWrapper(void *db) {
+    reinterpret_cast<DBImpl*>(db)->CompactMemTableThread();
+  }
 
-static void CompactMemTableWrapper(void *db) {
-	reinterpret_cast<DBImpl*>(db)->CompactMemTableThread();
-}
+  void CompactMemTableThread();
+  void CompactLevelThread();
 
-void CompactMemTableThread();
-void CompactLevelThread();
+  int compactor_id = 0;
 
-int compactor_id = 0;
+  // Tell the foreground that background has done something of note
+  port::CondVar bg_fg_cv_;
+  bool allow_background_activity_;
+  bool levels_locked_[leveldb::config::kNumLevels];
 
-// Tell the foreground that background has done something of note
-port::CondVar bg_fg_cv_;
-bool allow_background_activity_;
-bool levels_locked_[leveldb::config::kNumLevels];
-
-// Communicate with compaction background thread
-port::CondVar bg_compaction_cv_;
-// Communicate with memtable->L0 background thread
-port::CondVar bg_memtable_cv_;
-int num_bg_threads_;
-
+  // Communicate with compaction background thread
+  port::CondVar bg_compaction_cv_;
+  // Communicate with memtable->L0 background thread
+  port::CondVar bg_memtable_cv_;
+  int num_bg_threads_;
 //------------------------------------------------lsm-forest end-------------------------------------
   // table_cache_ provides its own synchronization
   TableCache* table_cache_;

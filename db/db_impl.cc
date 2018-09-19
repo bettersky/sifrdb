@@ -37,6 +37,9 @@
 
 extern int growth_factor; 
 extern int fly[];
+uint64_t bytes_written_wa = 0;
+uint64_t bytes_input_wa = 0;
+
 namespace leveldb {
 
 const int kNumNonTableCacheFiles = 10;
@@ -532,6 +535,8 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = logical_meta.file_size;
+  bytes_written_wa += logical_meta.file_size;
+  bytes_input_wa += logical_meta.file_size;
   stats_[level].Add(stats);
   return s;
 }
@@ -658,13 +663,14 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
 
 Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
                                           Iterator* input) {
+  // TODO: seq workload 
+  if(compact->outfile == NULL || compact->builder == NULL) {
+		return Status::OK();
+	}
   assert(compact != NULL);
   assert(compact->outfile != NULL);
   assert(compact->builder != NULL);
-	if(compact->outfile==NULL || compact->builder==NULL){
-		//printf("dbimpl,FinishCompactionOutputFile,blank output\n");
-		return Status::OK();
-	}
+	
   const uint64_t output_number = compact->current_output()->number;
   assert(output_number != 0);
 
@@ -690,7 +696,6 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
 	compact->output_logical_file.AppendPhysicalFile(compact->output_physical_file);
   // Finish and check for file errors
   if (s.ok()) {
-	//printf("FinishCompactionOutputFile, sync file \n");
     s = compact->outfile->Sync();
   }
   if (s.ok()) {
@@ -728,10 +733,31 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   // Add compaction outputs
   compact->compaction->AddInputDeletions(compact->compaction->edit());
   const int level = compact->compaction->level();
-  const LogicalMetaData& out= compact->output_logical_file;
+  const LogicalMetaData& out = compact->output_logical_file;
 
   compact->compaction->edit()->AddLogicalFile(level+1, out);
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
+}
+
+void DBImpl::EarlyCleaning(std::vector<uint64_t>& clean) {
+	// TODO: Storing the compaction journal before cleaning.
+	// Each level has a compaction journal. A journal entry contains the  contains the metadata of the persisted 
+  //  sub-trees in the output and the active sub-trees in the input. From the meta data the recovery process
+  //   can get the follow information:
+	//   (1) The logical trees that are under compaction when the crash happens, 
+  //          because each active sub-trees belongs to an logical tree.
+	//   There are chances a sub-tree is just finished so there is no active sub-tree. 
+  //    So we should record the logical tree for guarantee.
+	//   (2) A better solution is to record the logical trees and their edge keys.
+	//
+	
+	//TODO: Get the Early_cleaning lock to ensure that no thread is searching on the trees to be deleted. 
+	//Note: Early cleaning is never used in the first stage.
+	for (int i = 0; i < clean.size(); i++) {
+		uint64_t file_number = clean[i];
+		std::string file_name = TableFileName(dbname_, file_number);
+		env_->DeleteFile(file_name);
+	}
 }
 
 Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
@@ -748,19 +774,28 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
 	int level=compact->compaction->level();
 	fly[level]=0;
 	
+  std::vector<uint64_t> early_cleaned;
+	early_cleaned.clear();
+
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     counter++;
     // determine if the current iterator is a new sstable's start position.
     if (input->IsNewSSTTable()) {
+      // no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
+      PhysicalMetaData *phy_file = input->GetSSTTableMeta();
       if (input->IsOverlapped() == 0) {
-        // no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
-        PhysicalMetaData *phy_file = input->GetSSTTableMeta();
-        // TODO : seqwrite bug??? 
-        //FinishCompactionOutputFile(compact, input);
+        // write current file to keep logicial sstable 's key order
+        FinishCompactionOutputFile(compact, input);
         // old level 的 sstable  如何删除 ?? 
         compact->output_logical_file.AppendPhysicalFile(*phy_file);
         input->NextSSTTable();
         continue;
+      } else {
+        early_cleaned.push_back(phy_file->number);
+        if (early_cleaned.size() > 10) {
+          EarlyCleaning(early_cleaned);
+          early_cleaned.clear();
+        }
       }
     }
     
@@ -768,7 +803,7 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
 
     // Handle key/value, add to state, etc.
     bool drop = false;
-    if (!ParseInternalKey(key, &ikey)) {//assign the input key to ikey
+    if (!ParseInternalKey(key, &ikey)) { //assign the input key to ikey
       // Do not hide error keys
       current_user_key.clear();
       has_current_user_key = false;
@@ -777,12 +812,12 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
       if (!has_current_user_key ||
         user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) != 0) {
         // First occurrence of this user key
-        current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());//refresh the current_user_key
+        current_user_key.assign(ikey.user_key.data(), ikey.user_key.size()); //refresh the current_user_key
         has_current_user_key = true;
         last_sequence_for_key = kMaxSequenceNumber;
       }
 
-      if (last_sequence_for_key <= compact->smallest_snapshot) {//what is this meaning?
+      if (last_sequence_for_key <= compact->smallest_snapshot) { //what is this meaning?
         // Hidden by an newer entry for same user key
         drop = true;    // (A)
       } else if (ikey.type == kTypeDeletion &&
@@ -855,10 +890,11 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   Log(options_.info_log,  "Compacting level:%d Logical: %d",
       compact->compaction->level(),
       compact->compaction->logical_files_inputs_.size());
-
-  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0); //assuring there exist logical files in the level
-  assert(compact->builder == NULL); //TableBuilder* builder;
-  assert(compact->outfile == NULL); //WritableFile* outfile;
+  
+  // assuring there exist logical files in the level
+  assert(versions_->NumLevelFiles(compact->compaction->level()) > 0); 
+  assert(compact->builder == NULL); // TableBuilder* builder;
+  assert(compact->outfile == NULL); // WritableFile* outfile;
   if (snapshots_.empty()) {
     compact->smallest_snapshot = versions_->LastSequence();
   } else {
@@ -872,7 +908,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   status = ConcatenatingCompaction(compact);
   mutex_.Lock();
   if (status.ok()) {
-    status = InstallCompactionResults(compact);  //store the edit to manifest.
+    status = InstallCompactionResults(compact);  // store the edit to manifest.
   }
   if (!status.ok()) {
     RecordBackgroundError(status);
