@@ -234,7 +234,6 @@ class Version {
 //************LSM-forest end*************************************************************************************
   // List of files per level
 public:
-  //std::vector<FileMetaData*> files_[config::kNumLevels];
 	std::vector<LogicalMetaData*> logical_files_[config::kNumLevels];
 
   // Next file to compact based on seek stats.
@@ -379,20 +378,6 @@ class VersionSet {
   friend class Compaction;
   friend class Version;
 
-  void Finalize(Version* v);
-  //void Finalize_forest(Version* v);
-
-  void GetRange(const std::vector<LogicalMetaData*>& inputs,
-                InternalKey* smallest,
-                InternalKey* largest);
-
-  void GetRange2(const std::vector<LogicalMetaData*>& inputs1,
-                 const std::vector<LogicalMetaData*>& inputs2,
-                 InternalKey* smallest,
-                 InternalKey* largest);
-
-  void SetupOtherInputs(Compaction* c);
-
   // Save current contents to *log
   Status WriteSnapshot(log::Writer* log);
 
@@ -418,7 +403,7 @@ public:
 
   
   FILE * filter_file;
-   std::map<uint64_t, std::string*> file_level_bloom_filter;
+  std::map<uint64_t, std::string*> file_level_bloom_filter;
 	void Generate_file_level_bloom_filter();
 	void PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFilterBuilder* file_level_filter_builder);
 	void AddFileLevelBloomFilterInfo(uint64_t file_number, std::string* filter_string);
