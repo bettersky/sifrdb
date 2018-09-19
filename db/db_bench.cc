@@ -35,14 +35,16 @@ uint64_t write_total_log=0;
 //int sync_flag=0;
 //int fill100k_flag=0;
 char workload[1];
-int growth_factor=10;
+
 int read_method=1;
 int read_thread=16;
-uint64_t diskTrafficBytes=0;
-int fly[30];
+
 int scan_amount=0;
 long long read_mb(char *dev);
 
+extern uint64_t diskTrafficBytes;
+extern int fly[30];
+extern int growth_factor;
 extern uint64_t diskTrafficBytes;
 extern uint64_t bytes_written_wa;
 extern uint64_t bytes_input_wa;

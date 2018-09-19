@@ -35,8 +35,8 @@
 
 #include "unistd.h"
 
-extern int growth_factor; 
-extern int fly[];
+int growth_factor = 10; 
+int fly[30];
 uint64_t bytes_written_wa = 0;
 uint64_t bytes_input_wa = 0;
 
@@ -558,7 +558,7 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {//blank
   // }
 }
 
- void DBImpl::TEST_CompactRange(int level, const Slice* begin,const Slice* end) {//blank
+ void DBImpl::TEST_CompactRange(int level, const Slice* begin,const Slice* end) {
   // assert(level >= 0);
   // assert(level + 1 < config::kNumLevels);
 
@@ -771,11 +771,13 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
 	SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
 
 	int counter=0;
-	int level=compact->compaction->level();
+	int level = compact->compaction->level();
 	fly[level]=0;
 	
   std::vector<uint64_t> early_cleaned;
 	early_cleaned.clear();
+
+  //LogicalMetaData* logical_file = new LogicalMetaData(edit->new_logical_files_[i].second) 
 
 	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     counter++;
@@ -803,7 +805,7 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
 
     // Handle key/value, add to state, etc.
     bool drop = false;
-    if (!ParseInternalKey(key, &ikey)) { //assign the input key to ikey
+    if (!ParseInternalKey(key, &ikey)) { // assign the input key to ikey
       // Do not hide error keys
       current_user_key.clear();
       has_current_user_key = false;
@@ -971,11 +973,6 @@ Iterator* DBImpl::TEST_NewInternalIterator() {
   SequenceNumber ignored;
   uint32_t ignored_seed;
   return NewInternalIterator(ReadOptions(), &ignored, &ignored_seed);
-}
-
-int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
-  MutexLock l(&mutex_);
-  return versions_->MaxNextLevelOverlappingBytes();
 }
 
 Status DBImpl::Get(const ReadOptions& options,
@@ -1179,7 +1176,7 @@ Status DBImpl::BackgroundCompaction(int level) {
 	if (c == NULL) {
 		// Nothing to do
 	} else {
-    CompactionState* compact = new CompactionState(c);  //CompactionState contains the output structure
+    CompactionState* compact = new CompactionState(c);  // CompactionState contains the output structure
     Log(options_.info_log, "Level %d before DoCompactionWork logical_files_inputs_: %d\n",
           level, compact->compaction->logical_files_inputs_.size());
     status = DoCompactionWork(compact);

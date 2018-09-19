@@ -24,7 +24,7 @@
 #include "util/mutexlock.h"
 #include "util/posix_logger.h"
 
-extern uint64_t diskTrafficBytes;
+uint64_t diskTrafficBytes = 0;
 
 namespace leveldb {
 
