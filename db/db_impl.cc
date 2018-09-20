@@ -72,8 +72,8 @@ struct DBImpl::CompactionState {
   };
   std::vector<Output> outputs;
 
-	LogicalMetaData output_logical_file;
-	PhysicalMetaData output_physical_file;
+  LogicalMetaData output_logical_file;
+  PhysicalMetaData output_physical_file;
 
   // State kept for output being generated
   WritableFile* outfile;
@@ -152,9 +152,9 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   mem_->Ref();
   has_imm_.Release_Store(NULL);
 
-	for(int i = 0; i < config::kNumLevels; ++i) {
-		latest_sst_num[i] = 0;
-	}
+  for (int i = 0; i < config::kNumLevels; ++i) {
+    latest_sst_num[i] = 0;
+  }
   // Reserve ten files or so for other uses and give the rest to TableCache.
   const int table_cache_size = options_.max_open_files - kNumNonTableCacheFiles;
   table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
@@ -761,25 +761,25 @@ void DBImpl::EarlyCleaning(std::vector<uint64_t>& clean) {
 }
 
 Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
- 	Status status;
-	Iterator* input = versions_->MakeInputIterator(compact->compaction);
-	input->SeekToFirst();
-	
-	ParsedInternalKey ikey;
-	std::string current_user_key;       //actually used as the previous key
-	bool has_current_user_key = false;  //use to indicate for the first key
-	SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+  Status status;
+  Iterator* input = versions_->MakeInputIterator(compact->compaction);
+  input->SeekToFirst();
 
-	int counter=0;
-	int level = compact->compaction->level();
-	fly[level]=0;
-	
+  ParsedInternalKey ikey;
+  std::string current_user_key;       // actually used as the previous key
+  bool has_current_user_key = false;  // use to indicate for the first key
+  SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+
+  int counter=0;
+  int level = compact->compaction->level();
+  fly[level] = 0;
+
   std::vector<uint64_t> early_cleaned;
-	early_cleaned.clear();
+  early_cleaned.clear();
 
   //LogicalMetaData* logical_file = new LogicalMetaData(edit->new_logical_files_[i].second) 
 
-	for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
+  for (; input->Valid() && !shutting_down_.Acquire_Load(); ) {
     counter++;
     // determine if the current iterator is a new sstable's start position.
     if (input->IsNewSSTTable()) {
