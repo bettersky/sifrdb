@@ -99,30 +99,30 @@ void VersionEdit::EncodeTo(std::string* dst) const {
 	}
 
   // Encode new logical file
-	for (size_t i = 0; i < new_logical_files_.size(); i++) {
-	  const LogicalMetaData& logical_f = new_logical_files_[i].second;
-	  int level = new_logical_files_[i].first;
-	  int sst_num = logical_f.physical_files.size();
+  for (size_t i = 0; i < new_logical_files_.size(); i++) {
+    const LogicalMetaData& logical_f = new_logical_files_[i].second;
+    int level = new_logical_files_[i].first;
+    int sst_num = logical_f.physical_files.size();
 
-	  PutVarint32(dst, kLogicalFile);
-	  PutVarint32(dst, level);
-	  PutVarint32(dst, sst_num);
+    PutVarint32(dst, kLogicalFile);
+    PutVarint32(dst, level);
+    PutVarint32(dst, sst_num);
 
-	  PutVarint64(dst, logical_f.number);
-	  PutVarint64(dst, logical_f.file_size);
-	  PutLengthPrefixedSlice(dst, logical_f.smallest.Encode());
-	  PutLengthPrefixedSlice(dst, logical_f.largest.Encode());
+    PutVarint64(dst, logical_f.number);
+    PutVarint64(dst, logical_f.file_size);
+    PutLengthPrefixedSlice(dst, logical_f.smallest.Encode());
+    PutLengthPrefixedSlice(dst, logical_f.largest.Encode());
 
-	  // For each logical file, encode all of its physical file.
-	  for (int j = 0; j < logical_f.physical_files.size(); j++) {
-	  	const PhysicalMetaData& f = logical_f.physical_files[j];
-	  	PutVarint32(dst, kPhysicalFile);
-	  	PutVarint64(dst, f.number);
-	  	PutVarint64(dst, f.file_size);
-	  	PutLengthPrefixedSlice(dst, f.smallest.Encode());
-	  	PutLengthPrefixedSlice(dst, f.largest.Encode());
-	  }
-	}
+    // For each logical file, encode all of its physical file.
+    for (int j = 0; j < logical_f.physical_files.size(); j++) {
+      const PhysicalMetaData& f = logical_f.physical_files[j];
+      PutVarint32(dst, kPhysicalFile);
+      PutVarint64(dst, f.number);
+      PutVarint64(dst, f.file_size);
+      PutLengthPrefixedSlice(dst, f.smallest.Encode());
+      PutLengthPrefixedSlice(dst, f.largest.Encode());
+    }
+  }
 }
 
 static bool GetInternalKey(Slice* input, InternalKey* dst) {
@@ -159,12 +159,12 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
   InternalKey key;
 
   LogicalMetaData logical_f;
-	int level;
-	uint32_t sst_num;
+  int level;
+  uint32_t sst_num;
 
-	uint64_t logical_decoded_size;
-	InternalKey logical_decoded_smallest;
-	InternalKey logical_decoded_largest;
+  uint64_t logical_decoded_size;
+  InternalKey logical_decoded_smallest;
+  InternalKey logical_decoded_largest;
   // TODO: May cause memory leak
   const InternalKeyComparator *icmp_ = new InternalKeyComparator( (new Options())->comparator);
 
@@ -229,7 +229,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
       //   }
       //   break;
 
-	    case kDeletedPhysicalFile:
+      case kDeletedPhysicalFile:
           if (GetVarint64(&input, &number)) {
             deleted_physical_files_.insert(number);
           } else {
@@ -237,7 +237,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           }
           break;
 
-	    case kDeletedLogicalFile:
+      case kDeletedLogicalFile:
           if (GetLevel(&input, &level) &&
               GetVarint64(&input, &number)) {
             deleted_logical_files_.insert(std::make_pair(level, number));
@@ -246,7 +246,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           }
           break;
 
-		case kLogicalFile:        // 10
+      case kLogicalFile:        // 10
           if (GetLevel(&input, &level) &&
             GetVarint32(&input, &sst_num) &&
             GetVarint64(&input, &logical_f.number) &&

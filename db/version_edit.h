@@ -115,7 +115,7 @@ class VersionEdit {
   
   DeletedPhysicalFileSet deleted_physical_files_;
   DeletedLogicalFileSet deleted_logical_files_;
-	std::vector<std::pair<int, LogicalMetaData>> new_logical_files_;
+  std::vector<std::pair<int, LogicalMetaData>> new_logical_files_;
 };
 
 }  // namespace leveldb
