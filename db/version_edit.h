@@ -26,20 +26,20 @@ struct PhysicalMetaData {
 };
 
 struct LogicalMetaData {
-	int refs;
-	int allowed_seeks;
-	uint64_t number;	
-	uint64_t file_size;
-	InternalKey smallest;       // Smallest internal key served by table
-	InternalKey largest;        // Largest internal key served by table
+  int refs;
+  int allowed_seeks;
+  uint64_t number;	
+  uint64_t file_size;
+  InternalKey smallest;       // Smallest internal key served by table
+  InternalKey largest;        // Largest internal key served by table
 
-	std::vector<PhysicalMetaData> physical_files;
+  std::vector<PhysicalMetaData> physical_files;
 
-	void AppendPhysicalFile(PhysicalMetaData &f);
+  void AppendPhysicalFile(PhysicalMetaData &f);
 
-	LogicalMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) { 
-		physical_files.clear();
-	}
+  LogicalMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) {
+    physical_files.clear();
+  }
 };
 
 class VersionEdit {
@@ -97,13 +97,11 @@ class VersionEdit {
  private:
   friend class VersionSet;
 
-	 //typedef std::set< std::pair<int, uint64_t> > DeletedFileSet;
   typedef std::set< uint64_t> DeletedPhysicalFileSet;
-  
   typedef std::set< std::pair<int, uint64_t> > DeletedLogicalFileSet;
 
   std::string comparator_;
-  uint64_t log_number_;// log file is physical
+  uint64_t log_number_;   // log file is physical
   uint64_t prev_log_number_;
   uint64_t next_file_number_;
   SequenceNumber last_sequence_;
@@ -117,7 +115,7 @@ class VersionEdit {
   
   DeletedPhysicalFileSet deleted_physical_files_;
   DeletedLogicalFileSet deleted_logical_files_;
-	std::vector< std::pair<int, LogicalMetaData> > new_logical_files_;
+	std::vector<std::pair<int, LogicalMetaData>> new_logical_files_;
 };
 
 }  // namespace leveldb
