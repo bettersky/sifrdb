@@ -163,7 +163,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   env_->StartThread(&DBImpl::CompactMemTableWrapper, this);
   //  num_bg_threads_ = config::kNumLevels
   // TODO debug 1
-  for (int i = 0; i < 2; ++i) {
+  for (int i = 0; i < 1; ++i) {
 	  env_->StartThread(&DBImpl::CompactLevelWrapper, this);
   }
   num_bg_threads_ = 2 + 1;
@@ -793,11 +793,11 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
         input->NextSSTTable();
         continue;
       } else {
-        early_cleaned.push_back(phy_file->number);
-        if (early_cleaned.size() > 10) {
-          EarlyCleaning(early_cleaned);
-          early_cleaned.clear();
-        }
+        // early_cleaned.push_back(phy_file->number);
+        // if (early_cleaned.size() > 10) {
+        //   EarlyCleaning(early_cleaned);
+        //   early_cleaned.clear();
+        // }
       }
     }
     

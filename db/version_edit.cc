@@ -22,11 +22,11 @@ enum Tag {
   // 8 was used for large value refs
   kPrevLogNumber        = 9,
 
-  LogicalFile		    = 10,
-  //kLevel			    = 11,
-  kPhysicalFile		    = 12,
-  kDeletedPhysicalFile	= 13,
-  kDeletedLogicalFile	= 14
+  kLogicalFile           = 10,
+  //kLevel              = 11,
+  kPhysicalFile         = 12,
+  kDeletedPhysicalFile  = 13,
+  kDeletedLogicalFile   = 14
 };
 
 void VersionEdit::Clear() {
@@ -86,8 +86,8 @@ void VersionEdit::EncodeTo(std::string* dst) const {
   //  Encode deleted physical files
   for (DeletedPhysicalFileSet::const_iterator iter = deleted_physical_files_.begin();
        iter != deleted_physical_files_.end(); ++iter) {
-	PutVarint32(dst, kDeletedPhysicalFile);
-	PutVarint64(dst, *iter);  // physical file number
+    PutVarint32(dst, kDeletedPhysicalFile);
+    PutVarint64(dst, *iter);  // physical file number
 	}
 
   // Encode deleted logical files
