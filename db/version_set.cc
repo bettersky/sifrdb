@@ -21,9 +21,9 @@
 #include "port/port.h"
 #include <unistd.h>
 
-#include "stdlib.h"	
+#include "stdlib.h"
 
-#define s_to_ns 1000000000  
+#define s_to_ns 1000000000
 extern double durations[];
 
 extern int growth_factor;
@@ -150,11 +150,11 @@ class Version::LogicalSSTNumIterator : public Iterator {
 	virtual Slice nextSSTSmallestKey() {
 		printf("versionset.cc, nextSSTSmallestKey\n");
 	}
-	
+
 	PhysicalMetaData* GetSSTTableMeta() {
 		return const_cast<PhysicalMetaData*>(&flist_->physical_files[index_]);
 	}
-	
+
   virtual bool Valid() const {
     return index_ < flist_->physical_files.size();
   }
@@ -242,9 +242,6 @@ void Version::AddIterators(const ReadOptions& options,
   // }
 }
 
-// Callback from TableCache::Get()
-
-
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
   ParsedInternalKey parsed_key;
@@ -273,232 +270,179 @@ static bool NewestFirst(LogicalMetaData* a, LogicalMetaData* b) {
   return a->number > b->number;
 }
 
-// void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
-                                 // void* arg,
-                                 // bool (*func)(void*, int, FileMetaData*)) {
-  // // TODO(sanjay): Change Version::Get() to use this function.
-  // const Comparator* ucmp = vset_->icmp_.user_comparator();
-
-  // // Search level-0 in order from newest to oldest.
-  // std::vector<FileMetaData*> tmp;
-  // tmp.reserve(files_[0].size());
-  // for (uint32_t i = 0; i < files_[0].size(); i++) {
-    // FileMetaData* f = files_[0][i];
-    // if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
-        // ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
-      // tmp.push_back(f);
-    // }
-  // }
-  // if (!tmp.empty()) {
-    // std::sort(tmp.begin(), tmp.end(), NewestFirst);
-    // for (uint32_t i = 0; i < tmp.size(); i++) {
-      // if (!(*func)(arg, 0, tmp[i])) {
-        // return;
-      // }
-    // }
-  // }
-
-  // // Search other levels.
-  // for (int level = 1; level < config::kNumLevels; level++) {
-    // size_t num_files = files_[level].size();
-    // if (num_files == 0) continue;
-
-    // // Binary search to find earliest index whose largest key >= internal_key.
-    // uint32_t index = FindFile(vset_->icmp_, files_[level], internal_key);
-    // if (index < num_files) {
-      // FileMetaData* f = files_[level][index];
-      // if (ucmp->Compare(user_key, f->smallest.user_key()) < 0) {
-        // // All of "f" is past any data for user_key
-      // } else {
-        // if (!(*func)(arg, level, f)) {
-          // return;
-        // }
-      // }
-    // }
-  // }
-// }
-
 struct timespec search_begin, search_stage;
 
 int scan_th_counter=0;
 
 int th_counter=0;
 void Version::SearchThread() {
-
-	mutex_for_searching_queue.Lock();
-		uint32_t th_id=th_counter++;
-	mutex_for_searching_queue.Unlock();
+  mutex_for_searching_queue.Lock();
+  uint32_t th_id=th_counter++;
+  mutex_for_searching_queue.Unlock();
 
 	printf("versionset.cc, Forest_back, thread created, searching_right=%p, th_id=%d\n",searching_right,th_id);
-	while(true){
-//*********pre concurrent search begin**********			
+	while (true) {
+		Searching_item *to_search;
 
-			 Searching_item *to_search;
-			
-			mutex_for_searching_queue.Lock();
-			int current_id;//determined by the search id of the selected logical file
+    mutex_for_searching_queue.Lock();
+    int current_id; // determined by the search id of the selected logical file
 
-			while(1){
+    while(1) {
+      int found_logical_file_to_seacrh=0;
+      //get an SST to search begin
+      to_search = searching_right;
+      //printf("versionset, forest_back, 1111,to_search=%p\n",to_search);
+      while (to_search != NULL && 
+             (to_search->should_pop==1 || to_search->logical_file_counter >= logical_file_total) ){
+          //This item is not needed to be searched, so we move to the later item (the previous one).
+        to_search= to_search->pre;
+      }
+      //Coming to here, either the item is NULL, or it is waiting to be serviced. That is, to_search->should_pop is 0, and logical_file_counter < logical_file_total
+      if (to_search == NULL) {  //Searching queue can be regarded as empty.
+        //printf("versionset, forest_back, to_search=%p\n",to_search);
+        found_logical_file_to_seacrh=0;
+      } else if ( to_search->should_pop ==0 && to_search->logical_file_counter < logical_file_total) {
+        // Found an SST to search. To perform the search operation.
+        found_logical_file_to_seacrh = 1;
+      } else {
+        fprintf(stderr,"version_set, Forest_back,err\n");
+        exit(9);
+      }
 
-					int found_logical_file_to_seacrh=0;								
-				//get an SST to search begin
-					to_search= searching_right;
-					//printf("versionset, forest_back, 1111,to_search=%p\n",to_search);
-					while(to_search!=NULL && (to_search->should_pop==1 || to_search->logical_file_counter >= logical_file_total) ){//This item is not needed to be searched, so we move to the later item (the previous one).
-						to_search= to_search->pre;				
-					}
-					//Coming to here, either the item is NULL, or it is waiting to be serviced. That is, to_search->should_pop is 0, and logical_file_counter < logical_file_total
-					if(to_search==NULL){//Searching queue can be regarded as empty.
-						//printf("versionset, forest_back, to_search=%p\n",to_search);
-						found_logical_file_to_seacrh=0;
-					}
-					else if( to_search->should_pop ==0 && to_search->logical_file_counter < logical_file_total){//Found an SST to search. To perform the search operation.
-					
-						found_logical_file_to_seacrh=1; 						
-					}
-					else{
-						fprintf(stderr,"version_set, Forest_back,err\n");
-						exit(9);
-										
-					}
-					
-				//get an SST to search end
-				
-					if(0==found_logical_file_to_seacrh){//go to wait for the next request
-						thread_idle++;
-						//printf("versionset, forest_back, begin waiting, thread_idle=%d\n",thread_idle);
-						cv_for_searching.Wait();//Unlock the mutex_for_searching_queue and wait on it.
-						thread_idle--;// Lock the mutex_for_searching_queue.
-						//printf("versionset, forest_back, after waiting, thread_idle=%d\n",thread_idle);
-						continue;
+      //get an SST to search end
+      if(0==found_logical_file_to_seacrh){//go to wait for the next request
+        thread_idle++;
+        //printf("versionset, forest_back, begin waiting, thread_idle=%d\n",thread_idle);
+        cv_for_searching.Wait();//Unlock the mutex_for_searching_queue and wait on it.
+        thread_idle--;// Lock the mutex_for_searching_queue.
+        //printf("versionset, forest_back, after waiting, thread_idle=%d\n",thread_idle);
+        continue;
 
-					}
-					else if(1==found_logical_file_to_seacrh){//found an sst to search
-						break;
-					}
-					
-					printf("versionset, error,111111111 exit\n");
-					exit(9);
-			}
-		
-	//*********construct local searching key begin**********			
-			//printf("version_set, con search, begin construct local\n");
-			
-			current_id=to_search->logical_file_counter;
-			to_search->logical_file_counter++;//the next thread will search the next logical file.
-								
-			LogicalMetaData *logical_f= logical_files_set[current_id];
-			
-			ReadOptions &options_local =to_search->options;
+      } else if (1==found_logical_file_to_seacrh){//found an sst to search
+        break;
+      }
 
-			char data_for_searching_ikey[100];//Assume that the key size is less than 100 bytes.
-			memcpy(data_for_searching_ikey, to_search->ikey.data_ , to_search->ikey.size());//This is important!
-			Slice ikey_local=Slice(data_for_searching_ikey,  to_search->ikey.size());//Make the searching_ikey local
+      printf("versionset, error,111111111 exit\n");
+      exit(9);
+    }
 
-			Saver saver_ ;	//=item->saver_
-			//(1) saver_.user_key must be made local. The actual data of the user_key is a pointer.
-			//(2) Searching key must be made local.
-			saver_.state=kNotFound;
-			saver_.ucmp=to_search->ucmp;
-			saver_.user_key= Slice(ikey_local.data_, ikey_local.size()-8);//this is impaortant, make user_key local
-			
-			std::string  value;
-			saver_.value=&value;
+    //*********construct local searching key begin**********
+    //printf("version_set, con search, begin construct local\n");
 
-			int fingerprint=to_search->fingerprint;//This is set by the front server thread.
-			//printf("version_set, con search, end construct local\n");
-	//*********construct local searching key end**********
+    current_id=to_search->logical_file_counter;
+    to_search->logical_file_counter++;//the next thread will search the next logical file.//the next thread will search the next logical file.
+    LogicalMetaData *logical_f = logical_files_set[current_id];
+    ReadOptions &options_local = to_search->options;
+
+    char data_for_searching_ikey[100];//Assume that the key size is less than 100 bytes.
+    memcpy(data_for_searching_ikey, to_search->ikey.data_ , to_search->ikey.size());//This is important!
+    Slice ikey_local=Slice(data_for_searching_ikey,  to_search->ikey.size());//Make the searching_ikey local
+
+    Saver saver_;
+    //(1) saver_.user_key must be made local. The actual data of the user_key is a pointer.
+    //(2) Searching key must be made local.
+    saver_.state=kNotFound;
+    saver_.ucmp=to_search->ucmp;
+    saver_.user_key= Slice(ikey_local.data_, ikey_local.size()-8);//this is impaortant, make user_key local
+
+    std::string  value;
+    saver_.value=&value;
+
+    int fingerprint=to_search->fingerprint;//This is set by the front server thread.
+		//printf("version_set, con search, end construct local\n");
+	  //*********construct local searching key end**********
 
 		mutex_for_searching_queue.Unlock();
-//*********pre concurrent search end**********			
-		
-//**********concurrent search begin******************				
+    //*********pre concurrent search end**********
+
+    //**********concurrent search begin******************
 		Status s;
-		if (saver_.ucmp->Compare(saver_.user_key, logical_f->smallest.user_key()) >= 0 &&saver_.ucmp->Compare(saver_.user_key, logical_f->largest.user_key()) <= 0) {
-						// range search.
-			uint32_t index = FindFile(vset_->icmp_, *logical_f, ikey_local);	
+		if (saver_.ucmp->Compare(saver_.user_key, logical_f->smallest.user_key()) >= 0 
+        &&saver_.ucmp->Compare(saver_.user_key, logical_f->largest.user_key()) <= 0) {
+			// range search.
+			uint32_t index = FindFile(vset_->icmp_, *logical_f, ikey_local);
 			if (index >= logical_f->physical_files.size()) {
 							//do nothing. no physical file responses to this key.
-				//saver_.state=kNotFound;	
+				//saver_.state=kNotFound;
+			} else if (saver_.ucmp->Compare(saver_.user_key, logical_f->physical_files[index].smallest.user_key()) >= 0) {
+        // find a physical file
+        PhysicalMetaData *physical_f= &(logical_f->physical_files[index]);//
+        if (saver_.ucmp->Compare(saver_.user_key, physical_f->smallest.user_key())< 0 ||
+          saver_.ucmp->Compare(saver_.user_key, physical_f->largest.user_key()) > 0) {
+          // Not contained in this physical file.
+          // saver_.state=kNotFound;
+        } else {  //Possibely contained in this SST file.
+          uint64_t physical_file_number= physical_f->number;
+          uint64_t physical_file_size= physical_f->file_size;
+          s = vset_->table_cache_->Get(options_local, physical_file_number, physical_file_size, ikey_local, &saver_, SaveValue);
+        }
 			}
-			else if (saver_.ucmp->Compare(saver_.user_key, logical_f->physical_files[index].smallest.user_key()) >= 0){//find a physical file	
-					PhysicalMetaData *physical_f= &(logical_f->physical_files[index]);//
-					if (saver_.ucmp->Compare(saver_.user_key, physical_f->smallest.user_key())< 0 ||
-						saver_.ucmp->Compare(saver_.user_key, physical_f->largest.user_key()) > 0) {//Not contained in this physical file.
-							//saver_.state=kNotFound;				
-					}
-					else{  //Possibely contained in this SST file.
-						uint64_t physical_file_number= physical_f->number;
-						uint64_t physical_file_size= physical_f->file_size;
-						s = vset_->table_cache_->Get(options_local, physical_file_number, physical_file_size, ikey_local, &saver_, SaveValue);
-					}
-			}      
 		}
 		else{//The key is not in the range of the logical file, so do nothing.
-			//saver_.state=kNotFound;	
+			//saver_.state=kNotFound;
 		}
-				
-//**********concurrent search end******************
-	
 
-////**********process the search results  begin//**********
+    // Process the search results  begin
 		mutex_for_searching_queue.Lock();
 		//printf("version_set.cc,check begin, th_id=%d\n",th_id);
-			int should_grant_value=0;
-			if(to_search==NULL){//There is possibility that the item is deleted by the front thread.
-			
-			}
-			else if(to_search->should_pop ==1 ||fingerprint!=to_search->fingerprint || to_search->ikey!= ikey_local ){//The should_pop has been set by another thread, or the fingerprint is not the one of to_search. There is no need to check.
-				//printf("version_set.cc,  con search, to_search=null\n");
-				//exit(9);
-			}		
-			else{//***********checking and operating begin****************			
-				int check_num=logical_file_total;//default to check all results.
+    int should_grant_value=0;
+    if (to_search == NULL) {
+      //There is possibility that the item is deleted by the front thread.
 
-				if(kFound == saver_.state){
-					//printf("version_set.cc, kFound\n");
-					to_search->search_result_of_ssts[current_id]=2;//Mark the id for this result as Found.  
-					check_num=current_id;//If the key is found in this thread, all later results need not to be checked
-					to_search->found_flag=1;//This is a bug, but now we use it because we do not consider deletions.
-					should_grant_value=1;
-				}
-				else{
-					to_search->search_result_of_ssts[current_id]=1;//Mark the id for this result as NotFound.
-				}
+    } else if (to_search->should_pop == 1 ||
+               fingerprint != to_search->fingerprint || 
+               to_search->ikey!= ikey_local ) {
+      //The should_pop has been set by another thread, or the fingerprint is not the one of to_search. There is no need to check.
+      //printf("version_set.cc,  con search, to_search=null\n");
+      //exit(9);
+    } else { //***********checking and operating begin****************
+      int check_num=logical_file_total;//default to check all results.
 
-				int should_pop_local=1;//Defaulting the flag to be 1.
+      if (kFound == saver_.state) {
+        //printf("version_set.cc, kFound\n");
+        to_search->search_result_of_ssts[current_id]=2;//Mark the id for this result as Found.
+        check_num=current_id;//If the key is found in this thread, all later results need not to be checked
+        to_search->found_flag=1;//This is a bug, but now we use it because we do not consider deletions.
+        should_grant_value=1;
+      } else {
+        to_search->search_result_of_ssts[current_id]=1;//Mark the id for this result as NotFound.
+      }
 
-				for(int i=0;i<check_num;i++){
-					if(0==to_search->search_result_of_ssts[i]){//The logical file of this id has not been searched, so at least the thread that searches this logcial file will response the final check.	//end the for, and not pop								
-						should_pop_local=0;
-						break;
-					}
-					else if(2==to_search->search_result_of_ssts[i]){//All the front results must be one, saying that they have finished the searches, so this result of Found is the final result and we can conclude the search.				
-						should_pop_local=1;
-						should_grant_value=0;//There is more sound result has granted the value.
-						break;
-					}
-				}	
+      int should_pop_local = 1; //Defaulting the flag to be 1.
 
-				if(should_grant_value==1){
-					to_search->value=saver_.value;
-				}
-				//Note that if the current result is one, the threads will check all the results. And if all the results are one, this thread response for the pop.
-				
-				if(should_pop_local==1){
-					//printf("version_set.cc, get end, pop, item->found_flag=%d\n",item->found_flag);
-					//cv_for_delaying.SignalAll();//we use spin lock in the main thread.
-					to_search->should_pop=1;//Marks so that the main thread returns the result.
-					if(to_search->found_flag==1){
-						//to_search->saver_.state=kFound;
-						to_search->final_state=1;
-					}
-				}
-			}//***********checking and operat end****************
-			
-			//printf("version_set.cc,check end, th_id=%d, thread_idle=%d\n",th_id,thread_idle);
+      for (int i = 0; i < check_num; i++) {
+        if (0==to_search->search_result_of_ssts[i]) {
+          // The logical file of this id has not been searched, so at least the thread that searches this logcial file will response the final check.	//end the for, and not pop
+          should_pop_local=0;
+          break;
+        }
+        else if (2==to_search->search_result_of_ssts[i]) {
+          // All the front results must be one, saying that they have finished the searches, so this result of Found is the final result and we can conclude the search.
+          should_pop_local=1;
+          should_grant_value=0;//There is more sound result has granted the value.
+          break;
+        }
+      }
+
+      if (should_grant_value == 1) {
+        to_search->value=saver_.value;
+      }
+      //Note that if the current result is one, the threads will check all the results. And if all the results are one, this thread response for the pop.
+
+      if (should_pop_local == 1) {
+        //printf("version_set.cc, get end, pop, item->found_flag=%d\n",item->found_flag);
+        //cv_for_delaying.SignalAll();//we use spin lock in the main thread.
+        to_search->should_pop=1;//Marks so that the main thread returns the result.
+        if (to_search->found_flag ==1 ) {
+          //to_search->saver_.state=kFound;
+          to_search->final_state=1;
+        }
+      }
+    }//***********checking and operat end****************
+
+		//printf("version_set.cc,check end, th_id=%d, thread_idle=%d\n",th_id,thread_idle);
 		mutex_for_searching_queue.Unlock();
-////**********process the search results  end//**********		
+    ////**********process the search results  end//**********
 	}
 }
 
@@ -507,64 +451,68 @@ Status Version::Get(const ReadOptions& options,
                     std::string* value,
                     GetStats* stats) {
 #ifdef SEARCH_PARALLEL
+  if (create_thread_.NoBarrier_Load() == NULL) {
+    for (int i = 0; i < NUM_READ_THREADS; ++i) {
+      Env::Default()->StartThread(&Version::SearchWrapper, this);
+    }
+  }
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
   Searching_item *new_item= new Searching_item();;
-  new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.		
-  new_item->options= options;//provide argument for thread search		
+  new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.
+  new_item->options= options;//provide argument for thread search
   new_item->ucmp=ucmp;
   int thread_fingerprint= pthread_self();//Using thread id would be more simpler and safer.
   new_item->fingerprint= thread_fingerprint;
   //printf("right->fingerprint %d, th_id=%d\n",new_item->fingerprint, pthread_self());
-mutex_for_searching_queue.Lock();
-    new_item->next= searching_left;//Either searching_left is null or not.			
-    
-    if(searching_left!=NULL){//insert the new item
-      searching_left->pre=new_item;
-    }
-    
-    searching_left=new_item;
-    if(searching_right==NULL) {
-      searching_right=new_item;
-    }
-    
-    queue_size++;
-    mutex_for_searching_queue.Unlock();
-		//printf("version set, 22222222, left=%p,right=%p\n", searching_left,searching_right);
+  mutex_for_searching_queue.Lock();
+  new_item->next= searching_left;//Either searching_left is null or not.
 
-//***************************************construct the search item end
-		if(queue_size>10){
-			printf("versionset, Get, queue_size=%d\n", queue_size);	
-		}
-		//printf("versionset.c, before SignalAll, thread_idle=%d, key=%s, queue_size=%d, should_pop=%d,rightKey=%s,fp=%d,popfp=%d\n",thread_idle, user_key.data(),queue_size,searching_right->should_pop,searching_right->ikey.data(),thread_fingerprint,searching_right->fingerprint);
-		cv_for_searching.SignalAll();	//Wake the searching threads. This makes sure that the new item will be serviced. if(thread_idle> read_thread-2) 
-		uint64_t counter=0; 
-		while(searching_right!=NULL && (searching_right->should_pop!=1 || searching_right->fingerprint != thread_fingerprint) ){//poll the result status;  
-			//cv_for_searching.SignalAll();
-				//Go on polling		
-				usleep(1);
-		}
-		
+  if(searching_left!=NULL){//insert the new item
+    searching_left->pre=new_item;
+  }
+
+  searching_left=new_item;
+  if(searching_right==NULL) {
+    searching_right=new_item;
+  }
+
+  queue_size++;
+  mutex_for_searching_queue.Unlock();
+  //printf("version set, 22222222, left=%p,right=%p\n", searching_left,searching_right);
+
+  //***************************************construct the search item end
+  if(queue_size>10){
+    printf("versionset, Get, queue_size=%d\n", queue_size);
+  }
+  //printf("versionset.c, before SignalAll, thread_idle=%d, key=%s, queue_size=%d, should_pop=%d,rightKey=%s,fp=%d,popfp=%d\n",thread_idle, user_key.data(),queue_size,searching_right->should_pop,searching_right->ikey.data(),thread_fingerprint,searching_right->fingerprint);
+  cv_for_searching.SignalAll();	//Wake the searching threads. This makes sure that the new item will be serviced. if(thread_idle> read_thread-2)
+  uint64_t counter=0;
+  while(searching_right!=NULL && (searching_right->should_pop!=1 || searching_right->fingerprint != thread_fingerprint) ){//poll the result status;
+    //cv_for_searching.SignalAll();
+      //Go on polling
+      usleep(1);
+  }
+
   mutex_for_searching_queue.Lock();	//Needing lock because the searching threads may be accessing the item.
-		Searching_item *temp = searching_right;//for delete
-		searching_right=searching_right->pre;		
-		if(searching_right==NULL){//The last item is deleted, and searching_left also point to that item.
-			searching_left=NULL;
-		}		
-		queue_size--;
+  Searching_item *temp = searching_right;//for delete
+  searching_right=searching_right->pre;
+  if(searching_right==NULL){//The last item is deleted, and searching_left also point to that item.
+    searching_left=NULL;
+  }
+  queue_size--;
   mutex_for_searching_queue.Unlock();
 
-		int status=temp->final_state;
-		value=temp->value;
-		delete temp;
-	if(status==1){
+  int status=temp->final_state;
+  value=temp->value;
+  delete temp;
+	if (status == 1) {
 		return Status::OK();
-	}
-	else return Status::NotFound(Slice());
+	} else return Status::NotFound(Slice());
 
-#else 
+#else
 #ifdef READ_PARALLEL
   pthread_t current_thread = vset_->env_->GetThreadId();
 #endif
@@ -582,16 +530,16 @@ mutex_for_searching_queue.Lock();
   // in an smaller level, later levels are irrelevant.
 
   // to do range search for getting the ssts that possibly hold the key
-	// we should push the physical files to the tmp for search  
+	// we should push the physical files to the tmp for search
 	std::vector<PhysicalMetaData*> tmp; // to hold the files to be search
   for (int level = 0; level < config::kNumLevels; level++) {
 		tmp.clear();
-		size_t num_logical_files = logical_files_[level].size(); 
+		size_t num_logical_files = logical_files_[level].size();
 		if (num_logical_files == 0) continue;
 
 		// Get the list of files to search in this level
 		LogicalMetaData* const* logical_files_in_level = &logical_files_[level][0];
-    
+
     // Each logical file at most have one physical responsive physical file
 		tmp.reserve(num_logical_files);
 		// may need to make sure the logical files in the level are sorted by time.
@@ -605,19 +553,19 @@ mutex_for_searching_queue.Lock();
 				if (index >= logical_f->physical_files.size()) {
 					// do nothing. no physical file responses to this key.
 				} else if (ucmp->Compare(user_key, logical_f->physical_files[index].smallest.user_key()) >= 0) {
-          // TODO: 不比较largest的原因是二分查找，大的key，index会大    find a physical file	
+          // TODO: 不比较largest的原因是二分查找，大的key，index会大    find a physical file
 					tmp.push_back(&(logical_f->physical_files[index]));   // tmp contains pointers
-				} 
+				}
 			}
 		}
-	
+
 		if (tmp.empty()) continue;  //continue to search the next level
-      
+
 		PhysicalMetaData* const* physical_files = &tmp[0]; //points to the vector of files.
 		int num_physical_files = tmp.size();
 #ifndef READ_PARALLEL
 	  // here we get the files to search for the current level.
-    for (uint32_t i = 0; i < num_physical_files; ++i) { 
+    for (uint32_t i = 0; i < num_physical_files; ++i) {
       // begin to read the files by order. However, in lsm-forest here will be changed to concurrently.
       PhysicalMetaData* f = physical_files[i];
 
@@ -626,8 +574,8 @@ mutex_for_searching_queue.Lock();
       saver.ucmp = ucmp;
       saver.user_key = user_key;
       saver.value = value;
-      s = vset_->table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);	
-                      
+      s = vset_->table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);
+
       if (!s.ok()) {
         return s;
       }
@@ -645,227 +593,13 @@ mutex_for_searching_queue.Lock();
       }
     }
 #else
-    
+
 #endif
   } // end searching a level, may be have found and returned
 #endif
   // end all the searching and no key found
   return Status::NotFound(Slice());  // Use an empty error message for speed
-#if 0
-	//printf("Version_set, get, begin\n");				
-  Slice ikey = k.internal_key();
-  Slice user_key = k.user_key();
-  const Comparator* ucmp = vset_->icmp_.user_comparator();
-
-  int method=read_method;// 0 is multi thread, 1 is single thread.
-  //********************************lsm-forest begin**************************************************
-  //#define TH_NUM read_thead
-
-  if(0==method){//Multi-thread way.
-	  //has_created=1;
-    if(!has_created) {//Create thread pool. It is better to move this function out to be as a independent function.
-      thread_idle=0;
-      
-      searching_left=NULL;
-      searching_right=NULL;
-      queue_size=0;
-
-      printf("Version::Get, before Fores_thread_create, thread num=%d\n", read_thread);
-      Fores_thread_create(read_thread);
-      printf("Version::Get, after Fores_thread_create\n");
-
-      has_created=true;
-      logical_file_total=0;
-          
-      for (int level = 0; level < config::kNumLevels; level++) {			
-        for(int j=0;j<logical_files_[level].size();j++) {			
-          logical_files_set[logical_file_total] = logical_files_[level][j];				
-          logical_file_total++;
-        }
-        printf("Version::Get, logical_files_ in lev %d=%d\n", level, logical_files_[level].size());
-      }
-      //usleep(10000);//Assuring all the threads are prepared (an ugly way).
-      while(thread_idle<read_thread);
-      printf("versionset.cc, get, thread created finished,thread_idle=%d\n", thread_idle);
-	  }
-		//clock_gettime(CLOCK_MONOTONIC,&search_begin);
-		
-		//printf("version set, begin, left=%p,right=%p\n", searching_left,searching_right);
-    //***************************************construct the search item begin
-		Searching_item *new_item= new Searching_item();;
-		new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.		
-		new_item->options= options;//provide argument for thread search		
-		new_item->ucmp=ucmp;
-		int thread_fingerprint= pthread_self();//Using thread id would be more simpler and safer.
-		new_item->fingerprint= thread_fingerprint;
-		//printf("right->fingerprint %d, th_id=%d\n",new_item->fingerprint, pthread_self());
-mutex_for_searching_queue.Lock();
-			new_item->next= searching_left;//Either searching_left is null or not.			
-			
-			if(searching_left!=NULL){//insert the new item
-				searching_left->pre=new_item;
-			}
-			
-			searching_left=new_item;
-			if(searching_right==NULL) {
-				searching_right=new_item;
-			}
-			
-			queue_size++;
-mutex_for_searching_queue.Unlock();
-		//printf("version set, 22222222, left=%p,right=%p\n", searching_left,searching_right);
-
-//***************************************construct the search item end
-		if(queue_size>10){
-			printf("versionset, Get, queue_size=%d\n", queue_size);	
-		}
-		//printf("versionset.c, before SignalAll, thread_idle=%d, key=%s, queue_size=%d, should_pop=%d,rightKey=%s,fp=%d,popfp=%d\n",thread_idle, user_key.data(),queue_size,searching_right->should_pop,searching_right->ikey.data(),thread_fingerprint,searching_right->fingerprint);
-		
-		
-		cv_for_searching.SignalAll();	//Wake the searching threads. This makes sure that the new item will be serviced. if(thread_idle> read_thread-2) 
-	
-		uint64_t counter=0; 
-		while(searching_right!=NULL && (searching_right->should_pop!=1 || searching_right->fingerprint != thread_fingerprint) ){//poll the result status;  
-			//cv_for_searching.SignalAll();
-				//Go on polling		
-				usleep(1);
-		}
-		
-mutex_for_searching_queue.Lock();	//Needing lock because the searching threads may be accessing the item.
-		Searching_item *temp = searching_right;//for delete
-		searching_right=searching_right->pre;		
-		if(searching_right==NULL){//The last item is deleted, and searching_left also point to that item.
-			searching_left=NULL;
-		}		
-		queue_size--;
-mutex_for_searching_queue.Unlock();
-
-		
-		int status=temp->final_state;
-		value=temp->value;
-		delete temp;
-		
-		//clock_gettime(CLOCK_MONOTONIC,&search_stage);
-		//double notch =( (int)search_stage.tv_sec+((double)search_stage.tv_nsec)/s_to_ns ) - ( (int)search_begin.tv_sec+((double)search_begin.tv_nsec)/s_to_ns );
-
-		//printf("version set, end, left=%p,right=%p\n", searching_left,searching_right);
-	if(status==1){
-		return Status::OK();
-	}
-	else return Status::NotFound(Slice());
-}	 
- //********************************lsm-forest end**************************************************
-  
-if(1==method){  //Traditional way
-  
-  Status s;
-
-  stats->seek_file = NULL;
-  stats->seek_file_level = -1;
-  //FileMetaData* last_file_read = NULL;
-  int last_file_read_level = -1;
-
-  // We can search level-by-level since entries never hop across
-  // levels.  Therefore we are guaranteed that if we find data
-  // in an smaller level, later levels are irrelevant.
-  //LogicalMetaData* tmp2;
-  
-  static uint64_t times_get=0, level_total=0;
-  static uint64_t sst_num=0;
-  times_get++;
-  //if(times_get!=0) printf("version_set.cc, level_total =%d, times_get=%d, aver level=%f\n", level_total,times_get, (double)level_total/times_get);
-   // if(times_get!=0) printf("version_set.cc, sst_num =%d, times_get=%d, aver sst=%f\n", level_total,times_get, (double)sst_num/times_get);
-
-    
-//to do range search for getting the ssts that possibly hold the key
-		// we should push the physical files to the tmp for search  
-//printf("version set, get, key=%s\n",user_key.data());
-	std::vector<PhysicalMetaData*> tmp;//to hold the files to be search
-
-  for (int level = 0; level < config::kNumLevels; level++) {
-		tmp.clear();//mei 
-		size_t num_logical_files = logical_files_[level].size(); 
-		if (num_logical_files == 0) continue;
-		// Get the list of files to search in this level
-		LogicalMetaData* const* logical_files_in_level = &logical_files_[level][0];
-    
-    //each logical file at most have one physical responsive physical file
-		tmp.reserve(num_logical_files);
-		//may need to make sure the logical files in the level are sorted by time.
-		for (uint32_t i = 0; i < num_logical_files; i++) {//get the physical files may be contain the keys.
-			LogicalMetaData* logical_f = logical_files_in_level[i];
-			if (ucmp->Compare(user_key, logical_f->smallest.user_key()) >= 0 &&
-          ucmp->Compare(user_key, logical_f->largest.user_key()) <= 0) {
-				//within logical range.
-				uint32_t index = FindFile(vset_->icmp_, *logical_f, ikey);
-				if (index >= logical_f->physical_files.size()) {
-					//do nothing. no physical file responses to this key.
-				} else if (ucmp->Compare(user_key, logical_f->physical_files[index].smallest.user_key()) >= 0) {//find a physical file	
-					tmp.push_back(&(logical_f->physical_files[index])); //tmp contains pointers
-				}      
-			}
-		}
-	
-		if (tmp.empty()) continue;//continue to search the next level
-      
-		PhysicalMetaData* const* physical_files_to_search_old = &tmp[0]; //points to the vector of files.
-		int num_physical_files = tmp.size();
-  
-	//to here we get the files to search for the current level.
-
-//*************************here is old method with single traverse******************
-
-		{	
-				for (uint32_t i = 0; i < num_physical_files; ++i) { // begin to read the files by order. However, in lsm-forest here will be changed to concurrently.
-				
-				  PhysicalMetaData* f = physical_files_to_search_old[i];
-				 
-				  //printf("version set, get, lev=%d, file size=%ju MB\n", level, f->file_size/1024/1024);    
-				  Saver saver;
-				  saver.state = kNotFound;
-				  saver.ucmp = ucmp;
-				  saver.user_key = user_key;
-				  saver.value = value;
-
-				  s = vset_->table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);	
-											   
-				  if (!s.ok()) {
-					return s;
-				  }
-				  switch (saver.state) {
-					case kNotFound:
-						//printf("version set, get, not found, lev=%d,file=%d\n",level,f->number);
-					  break;      // Keep searching in other files
-					case kFound:
-						//printf("version set, get, found, lev=%d, file=%d--------------------\n",level,f->number);
-					  return s;
-					case kDeleted:
-						printf("version set, get, delete, lev=%d--------------------\n",level);
-						exit(9);
-					  s = Status::NotFound(Slice());  // Use empty error message for speed
-					  return s;
-					case kCorrupt:
-						printf("version set, get, corrupt, lev=%d--------------------\n",level);
-						exit(9);
-					  s = Status::Corruption("corrupted key for ", user_key);
-					  return s;
-				  }
-				}
-				//to here to old method ends			
-		}
-//*************************here is old method with single traverse end******************
-
-	
-  }//here end searching a level, may be have found and returned
-
-}//end if method==1  
-  //here to end all the searching and no key found
-		//printf("version set, get, not found, key=%s\n",user_key.data());
-  return Status::NotFound(Slice());  // Use an empty error message for speed
-#endif
 }
-
-
 
 bool Version::UpdateStats(const GetStats& stats) {
   //FileMetaData* f = stats.seek_file;
@@ -932,85 +666,6 @@ void Version::Unref() {
   }
 }
 
-// bool Version::OverlapInLevel(int level,
-                             // const Slice* smallest_user_key,
-                             // const Slice* largest_user_key) {
-  // return SomeFileOverlapsRange(vset_->icmp_, (level > 0), files_[level],
-                               // smallest_user_key, largest_user_key);
-// }
-
-// int Version::PickLevelForMemTableOutput(
-    // const Slice& smallest_user_key,
-    // const Slice& largest_user_key) {
-  // int level = 0;
-  // if (!OverlapInLevel(0, &smallest_user_key, &largest_user_key)) {
-    // // Push to next level if there is no overlap in next level,
-    // // and the #bytes overlapping in the level after that are limited.
-    // InternalKey start(smallest_user_key, kMaxSequenceNumber, kValueTypeForSeek);
-    // InternalKey limit(largest_user_key, 0, static_cast<ValueType>(0));
-    // std::vector<FileMetaData*> overlaps;
-    // while (level < config::kMaxMemCompactLevel) {
-      // if (OverlapInLevel(level + 1, &smallest_user_key, &largest_user_key)) {
-        // break;
-      // }
-      // if (level + 2 < config::kNumLevels) {
-        // // Check that file does not overlap too many grandparent bytes.
-        // GetOverlappingInputs(level + 2, &start, &limit, &overlaps);
-        // const int64_t sum = TotalFileSize(overlaps);
-        // if (sum > kMaxGrandParentOverlapBytes) {
-          // break;
-        // }
-      // }
-      // level++;
-    // }
-  // }
-  // return level;
-// }
-
-// Store in "*inputs" all files in "level" that overlap with [begin,end]
-// void Version::GetOverlappingInputs(
-    // int level,
-    // const InternalKey* begin,
-    // const InternalKey* end,
-    // std::vector<FileMetaData*>* inputs) {
-  // assert(level >= 0);
-  // assert(level < config::kNumLevels);
-  // inputs->clear();
-  // Slice user_begin, user_end;
-  // if (begin != NULL) {
-    // user_begin = begin->user_key();
-  // }
-  // if (end != NULL) {
-    // user_end = end->user_key();
-  // }
-  // const Comparator* user_cmp = vset_->icmp_.user_comparator();
-  // for (size_t i = 0; i < files_[level].size(); ) {
-    // FileMetaData* f = files_[level][i++];
-    // const Slice file_start = f->smallest.user_key();
-    // const Slice file_limit = f->largest.user_key();
-    // if (begin != NULL && user_cmp->Compare(file_limit, user_begin) < 0) {
-      // // "f" is completely before specified range; skip it
-    // } else if (end != NULL && user_cmp->Compare(file_start, user_end) > 0) {
-      // // "f" is completely after specified range; skip it
-    // } else {
-      // inputs->push_back(f);
-      // if (level == 0) {
-        // // Level-0 files may overlap each other.  So check if the newly
-        // // added file has expanded the range.  If so, restart search.
-        // if (begin != NULL && user_cmp->Compare(file_start, user_begin) < 0) {
-          // user_begin = file_start;
-          // inputs->clear();
-          // i = 0;
-        // } else if (end != NULL && user_cmp->Compare(file_limit, user_end) > 0) {
-          // user_end = file_limit;
-          // inputs->clear();
-          // i = 0;
-        // }
-      // }
-    // }
-  // }
-// }
-
 std::string Version::DebugString() const {
   std::string r;
   for (int level = 0; level < config::kNumLevels; level++) {
@@ -1019,26 +674,40 @@ std::string Version::DebugString() const {
     //   17:123['a' .. 'd']
     //   20:43['e' .. 'g']
     const std::vector<LogicalMetaData*>& logical_files = logical_files_[level];
-    size_t logical_num = logical_files.size(); 
-    if (logical_num == 0) continue; 
+    size_t logical_num = logical_files.size();
+    if (logical_num == 0) continue;
     // level
     r.append("--- level ");
     AppendNumberTo(&r, level);
     r.append(" ---\n");
-    // logical_num 
+    // logical_num
+    r.append("num_logical: ");
     AppendNumberTo(&r, logical_num);
-    r.append("[");
+    r.append("\n");
+
     for (size_t i = 0; i < logical_num; i++) {
       const std::vector<PhysicalMetaData>& files = logical_files[i]->physical_files;
-      //r.append(" ");
-      //AppendNumberTo(&r, i);
-      //r.append(" ---\n");
-      //r.append(" files: ");
+      r.append("Logical file: \n");
+      r.append("        ");
+      AppendNumberTo(&r, logical_files[i]->number);
+      r.append(":");
+      AppendNumberTo(&r, logical_files[i]->file_size);
+      r.append("[");
+      r.append(logical_files[i]->smallest.DebugString());
+      r.append(" .. ");
+      r.append(logical_files[i]->largest.DebugString());
+      r.append("]\n");
+      // AppendNumberTo(&r, i);
+      // r.append(" ---\n");
+      // r.append(" files: ");
+      // AppendNumberTo(&r, files.size());
+      // r.append(", ");
+      r.append("Physical file: ");
       AppendNumberTo(&r, files.size());
-      r.append(", ");
+      r.append("\n");
 #if 0
       for (size_t i = 0; i < files.size(); i++) {
-        r.push_back(' ');
+        r.append("        ");
         AppendNumberTo(&r, files[i].number);
         r.push_back(':');
         AppendNumberTo(&r, files[i].file_size);
@@ -1050,7 +719,7 @@ std::string Version::DebugString() const {
       }
 #endif
     }
-    r.append("]\n");
+    //r.append("]\n");
   }
   return r;
 }
@@ -1134,7 +803,7 @@ class VersionSet::Builder {
     // Add new files
 	  for (int i = 0; i < edit->new_logical_files_.size(); i++) {
       const int level = edit->new_logical_files_[i].first;
-      LogicalMetaData* f = new LogicalMetaData(edit->new_logical_files_[i].second); 
+      LogicalMetaData* f = new LogicalMetaData(edit->new_logical_files_[i].second);
       f->refs = 1;
 
       // We arrange to automatically compact this file after
@@ -1155,7 +824,7 @@ class VersionSet::Builder {
 
       levels_[level].deleted_files.erase(f->number);  //erase to not delete the file
       levels_[level].added_files->insert(f);
-	}	
+	}
 }
 
   // Save the current state in *v.
@@ -1169,14 +838,14 @@ class VersionSet::Builder {
       const std::vector<LogicalMetaData*>& base_files = base_->logical_files_[level];
       std::vector<LogicalMetaData*>::const_iterator base_iter = base_files.begin();
       std::vector<LogicalMetaData*>::const_iterator base_end = base_files.end();
-	  
+
       const FileSet* added = levels_[level].added_files;
       v->logical_files_[level].reserve(base_files.size() + added->size());
-      // add the base files TODO 
+      // add the base files TODO
       for (; base_iter != base_end; ++base_iter) {
         MaybeAddFile(v, level, *base_iter);
       }
-	  
+
       // add the new file
       // assure that the size of added is 1.
       for (FileSet::const_iterator added_iter = added->begin(); added_iter != added->end(); ++added_iter) {
@@ -1276,7 +945,7 @@ void VersionSet::PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFil
     if (cnt > 0) {
 		std::string* filter_string = file_level_filter_builder->GenerateFilter();
 		assert (filter_string != NULL);
-		
+
 		printf("versionset, PopulateBloomFilterForFile, str length=%d\n", filter_string->size());
 		//fprintf(filter_file,"%d %d\n",file_number,filter_string->size());
 		for(int i=0;i<filter_string->size();i++){
@@ -1284,9 +953,9 @@ void VersionSet::PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFil
 		}
 		fprintf(filter_file,"\n");
 		fflush(filter_file);
-		
+
 		filter_counter++;
-		
+
 		if(filter_counter>=2){
 			exit(9);
 		}
@@ -1296,16 +965,16 @@ void VersionSet::PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFil
 }
 
 void VersionSet::Generate_file_level_bloom_filter(){
-	
+
 	printf("version set, Generate_file_level_bloom_filter begin\n ");
 	//If the file named "file_level_bloom_filter" does not exist, generate the file.
 	//Else, read the file to generate filter.
-	
+
 	 filter_file=fopen("file_level_bloom_filter","w+");
-	
+
 	 const FilterPolicy *filter_policy = options_->filter_policy;
 	FileLevelFilterBuilder file_level_filter_builder(filter_policy);
-	
+
     if (filter_policy == NULL) {
 		printf("version set, Generate_file_level_bloom_filter, filter_policy is NULL, do not Generate_file_level_bloom_filter\n");
     	return;
@@ -1321,7 +990,7 @@ void VersionSet::Generate_file_level_bloom_filter(){
 		}
 	}
 	//file_level_filter_builder.Destroy();
-	current->Unref();	
+	current->Unref();
 	exit(9);
 }
 
@@ -1363,7 +1032,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     builder.Apply(edit);
     builder.SaveTo(v);
   }
-    
+
   // Initialize new descriptor log file if necessary by creating
   // a temporary file that contains a snapshot of the current version.
   std::string new_manifest_file;
@@ -1428,7 +1097,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 int VersionSet::Test(){
 	for(int i=0;i<10;i++){
 		printf("version_set.cc, Lev %d, logical num %d\n",i, current_->logical_files_[i].size());
-	
+
 	}
 }
 Status VersionSet::Recover() {
@@ -1438,7 +1107,7 @@ Status VersionSet::Recover() {
       if (this->status->ok()) *this->status = s;
     }
   };
-	
+
   // Read "CURRENT" file, which contains a pointer to the current manifest file
   std::string current;
   Status s = ReadFileToString(env_, CurrentFileName(dbname_), &current);
@@ -1662,16 +1331,16 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   // Level-0 files have to be merged together.  For other levels,
   // we will make a concatenating iterator per level.
   // TODO(opt): use concatenating iterator for level-0 if there is no overlap
-  
-  //number of iterators 
-	const int space =  c->logical_files_inputs_.size(); 
+
+  //number of iterators
+	const int space =  c->logical_files_inputs_.size();
   Iterator** list = new Iterator*[space];
   int num = 0;
-   
+
   for (int i = 0; i < space; i++) {
     list[num++] = NewTwoLevelIterator(
         new Version::LogicalSSTNumIterator(icmp_, c->logical_files_inputs_[i]),
-        &GetFileIterator, table_cache_, options);		
+        &GetFileIterator, table_cache_, options);
   }
 
   assert(num <= space);
@@ -1685,7 +1354,7 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
     if (locked[i]) {
       continue;
     }
-    if (current_->logical_files_[i].size() > growth_factor && 
+    if (current_->logical_files_[i].size() > growth_factor &&
         current_->logical_files_[i + 1].size() <= growth_factor*1.5) {
       Log(options_->info_log, "Level-%d needs Compaction\n", i);
       level = i;
@@ -1702,7 +1371,7 @@ bool VersionSet::NeedsCompaction(bool* locked, int& level) {
 }
 
 Compaction* VersionSet::PickCompaction(int level) {
-  assert(level >= 0);  
+  assert(level >= 0);
   assert(level+1 < config::kNumLevels);
   Compaction* c = new Compaction(level);
 

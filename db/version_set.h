@@ -26,13 +26,12 @@
 #include "port/thread_annotations.h"
 #include "table/filter_block.h"
 
-//#define SEARCH_PARALLEL
+#define SEARCH_PARALLEL
 #ifdef SEARCH_PARALLEL
-#define NUM_READ_THREADS 16
+#define NUM_READ_THREADS 1
 #endif
 
 //#define READ_PARALLEL
-
 #ifdef READ_PARALLEL
 #define NUM_READ_THREADS 16
 #endif
@@ -154,8 +153,7 @@ class Version {
   // int PickLevelForMemTableOutput(const Slice& smallest_user_key,
                                  // const Slice& largest_user_key);
 
-  //int NumFiles(int level) const { return files_[level].size(); }
-	  int NumFiles(int level) const { return logical_files_[level].size(); }
+	int NumFiles(int level) const { return logical_files_[level].size(); }
 
 
   // Return a human readable string that describes this version's contents.
@@ -193,7 +191,7 @@ class Version {
   static void SearchWrapper(void *version) {
     reinterpret_cast<Version*>(version)->SearchThread();
   }
-  bool has_created;
+  port::AtomicPointer create_thread_;
   uint64_t logical_file_total;
   volatile int thread_idle;
       
@@ -203,7 +201,7 @@ class Version {
     ReadOptions options;
     const Comparator* ucmp;
     Slice ikey;		
-    int volatile logical_file_counter;//开始为0，每取一次+1，指示sst的序号		
+    int volatile logical_file_counter;  // 开始为0，每取一次+1，指示sst的序号		
     int final_state;		
     volatile  int should_pop;
     int found_flag;
@@ -223,7 +221,7 @@ class Version {
     }	
   };
 
-  //Searching_item *right;//pints to the last item of the searching items
+  // Searching_item *right;  // pints to the last item of the searching items
   Searching_item *searching_left = NULL;
   Searching_item *searching_right = NULL;
   uint64_t queue_size = 0;
@@ -252,13 +250,8 @@ public:
         file_to_compact_level_(-1),
         compaction_score_(-1),
         compaction_level_(-1),
-        has_created(false),
         cv_for_searching(&mutex_for_searching_queue) {
-#ifdef SEARCH_PARALLEL
-    for (int i = 0; i < NUM_READ_THREADS; ++i) {
-      Env::Default()->StartThread(&Version::SearchWrapper, this);
-    }
-#endif
+    create_thread_.Release_Store(NULL);
   }
 
   ~Version();
