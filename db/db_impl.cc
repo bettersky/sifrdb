@@ -166,7 +166,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   for (int i = 0; i < 1; ++i) {
 	  env_->StartThread(&DBImpl::CompactLevelWrapper, this);
   }
-  num_bg_threads_ = 2 + 1;
+  num_bg_threads_ = 1 + 1;
   for (unsigned i = 0; i < config::kNumLevels; ++i) {
     levels_locked_[i] = false;
   }

@@ -19,21 +19,23 @@
 #include <set>
 #include <vector>
 #include <deque>
+#include <unordered_map>
 #include "db/dbformat.h"
 #include "db/version_edit.h"
 #include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "table/filter_block.h"
+#include "util/blocking_queue.h"
 
-#define SEARCH_PARALLEL
+//#define SEARCH_PARALLEL
 #ifdef SEARCH_PARALLEL
 #define NUM_READ_THREADS 1
 #endif
 
 //#define READ_PARALLEL
 #ifdef READ_PARALLEL
-#define NUM_READ_THREADS 16
+#define NUM_READ_THREADS 1
 #endif
 
 namespace leveldb {
@@ -49,39 +51,11 @@ class Version;
 class VersionSet;
 class WritableFile;
 
-// Return the smallest index i such that files[i]->largest >= key.
-// Return files.size() if there is no such file.
-// REQUIRES: "files" contains a sorted list of non-overlapping files.
-// extern int FindFile(const InternalKeyComparator& icmp,
-                    // const std::vector<FileMetaData*>& files,
-                    // const Slice& key);
-
 // Return the smallest index i such that key <= logical_file.physical_files[i]->largest.
 //return the number of physical file if there is no such physical file
 extern int FindFile(const InternalKeyComparator& icmp,
                     const LogicalMetaData& logical_file,
                     const Slice& key);
-
-// Returns true if some file in "files" overlaps the user key range
-// [*smallest,*largest].
-// smallest==NULL represents a key smaller than all keys in the DB.
-// largest==NULL represents a key largest than all keys in the DB.
-// REQUIRES: If disjoint_sorted_files, files[] contains disjoint ranges
-//           in sorted order.
-// extern bool SomeFileOverlapsRange(
-    // const InternalKeyComparator& icmp,
-    // bool disjoint_sorted_files,
-    // const std::vector<FileMetaData*>& files,
-    // const Slice* smallest_user_key,
-    // const Slice* largest_user_key);
-
-// Returns true if some file in "logical files" overlaps the user key range
-// extern bool SomeLogicalFileOverlapsRange(  //no use. dbimpl.cc中 level = base->PickLevelForMemTableOutput 已注销
-    // const InternalKeyComparator& icmp,
-    // bool disjoint_sorted_files,
-    // const std::vector<LogicalMetaData*>& logical_files,
-    // const Slice* smallest_user_key,
-    // const Slice* largest_user_key);
 	
 namespace {
 enum SaverState {
@@ -99,6 +73,21 @@ struct Saver {
   std::string* value;
 };
 }
+
+class SearchItem {
+  public:
+    Slice ikey;
+    Version* version;
+    PhysicalMetaData* file;
+    Saver* saver;
+    ReadOptions options;
+    Status status;
+    pthread_t id;
+
+  private:
+    friend class Version;
+    friend class VersionSet;
+};
 
 class Version {
  public:
@@ -134,27 +123,7 @@ class Version {
   void Ref();
   void Unref();
 
-  // void GetOverlappingInputs(//called by PickLevelForMemTableOutput
-      // int level,
-      // const InternalKey* begin,         // NULL means before all keys
-      // const InternalKey* end,           // NULL means after all keys
-      // std::vector<FileMetaData*>* inputs);
-
-  // Returns true iff some file in the specified level overlaps
-  // some part of [*smallest_user_key,*largest_user_key].
-  // smallest_user_key==NULL represents a key smaller than all keys in the DB.
-  // largest_user_key==NULL represents a key largest than all keys in the DB.
-  // bool OverlapInLevel(int level,
-                      // const Slice* smallest_user_key,
-                      // const Slice* largest_user_key);
-
-  // Return the level at which we should place a new memtable compaction
-  // result that covers the range [smallest_user_key,largest_user_key].
-  // int PickLevelForMemTableOutput(const Slice& smallest_user_key,
-                                 // const Slice& largest_user_key);
-
 	int NumFiles(int level) const { return logical_files_[level].size(); }
-
 
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;
@@ -167,21 +136,10 @@ class Version {
 
   Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
 
-  // Call func(arg, level, f) for every file that overlaps user_key in
-  // order from newest to oldest.  If an invocation of func returns
-  // false, makes no more calls.
-  //
-  // REQUIRES: user portion of internal_key == user_key.
-  // void ForEachOverlapping(Slice user_key, Slice internal_key,
-                          // void* arg,
-                          // bool (*func)(void*, int, FileMetaData*));
-
   VersionSet* vset_;            // VersionSet to which this Version belongs
   Version* next_;               // Next version in linked list
   Version* prev_;               // Previous version in linked list
   int refs_;                    // Number of live refs to this version
-
-//************LSM-forest begin*************************************************************************************
 
   #define Max_Thread_Num 100
   pthread_t pth_forest[Max_Thread_Num];
@@ -229,7 +187,6 @@ class Version {
   port::Mutex mutex_for_searching_queue;
   port::CondVar cv_for_searching;
 
-//************LSM-forest end*************************************************************************************
   // List of files per level
 public:
 	std::vector<LogicalMetaData*> logical_files_[config::kNumLevels];
@@ -365,6 +322,20 @@ class VersionSet {
   };
   const char* LevelSummary(LevelSummaryStorage* scratch) const;
 
+  void Generate_file_level_bloom_filter();
+	void PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFilterBuilder* file_level_filter_builder);
+	void AddFileLevelBloomFilterInfo(uint64_t file_number, std::string* filter_string);
+
+#ifdef READ_PARALLEL
+  void SearchThread();
+  static void SearchWrapper(void *versionset) {
+    reinterpret_cast<VersionSet*>(versionset)->SearchThread();
+  }
+  SimpleQueue<SearchItem> iQueue_;  // input searchitem queue
+  SimpleQueue<SearchItem> oQueue_;  // output searchitem queue 
+  std::unordered_map<pthread_t, SimpleQueue<SearchItem>> mapQueue_;
+#endif
+
  private:
   class Builder;
 
@@ -388,19 +359,12 @@ class VersionSet {
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
 
   // Opened lazily
-public:
   WritableFile* descriptor_file_;
   log::Writer* descriptor_log_;
   Version dummy_versions_;  // Head of circular doubly-linked list of versions.
   Version* current_;        // == dummy_versions_.prev_
-
-  
-  FILE * filter_file;
+  FILE* filter_file;
   std::map<uint64_t, std::string*> file_level_bloom_filter;
-	void Generate_file_level_bloom_filter();
-	void PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFilterBuilder* file_level_filter_builder);
-	void AddFileLevelBloomFilterInfo(uint64_t file_number, std::string* filter_string);
-   
    
   // Per-level key at which the next compaction at that level should start.
   // Either an empty string, or a valid InternalKey.
@@ -423,14 +387,6 @@ class Compaction {
   // Return the object that holds the edits to the descriptor done
   // by this compaction.
   VersionEdit* edit() { return &edit_; }
-
-  // "which" must be either 0 or 1
-  //int num_input_files(int which) const { return inputs_[which].size(); }
-	
-
-  // Return the ith input file at "level()+which" ("which" must be 0 or 1).
-
-  //FileMetaData* input(int which, int i) const { return inputs_[which][i]; }
 
   // Maximum size of files to build during this compaction.
   uint64_t MaxOutputFileSize() const { return max_output_file_size_; }
@@ -468,9 +424,6 @@ class Compaction {
   uint64_t max_output_file_size_;
   Version* input_version_;
   VersionEdit edit_;
-
-  // Each compaction reads inputs from "level_" and "level_+1"
-  //std::vector<FileMetaData*> inputs_[2];      // The two sets of inputs
 	
   // State used to check for number of of overlapping grandparent files
   // (parent == level_ + 1, grandparent == level_ + 2)

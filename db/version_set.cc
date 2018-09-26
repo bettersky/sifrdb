@@ -25,11 +25,8 @@
 
 #define s_to_ns 1000000000
 extern double durations[];
-
 extern int growth_factor;
-
 extern int read_method;
-
 extern int read_thread;
 
 namespace leveldb {
@@ -225,41 +222,17 @@ void Version::AddIterators(const ReadOptions& options,
 							);
 		}
 	}
-  // Merge all level zero files together since they may overlap
-  // for (size_t i = 0; i < files_[0].size(); i++) {
-    // iters->push_back(
-        // vset_->table_cache_->NewIterator(
-            // options, files_[0][i]->number, files_[0][i]->file_size));
-  // }
-
-  // For levels > 0, we can use a concatenating iterator that sequentially
-  // walks through the non-overlapping files in the level, opening them
-  // lazily.
-  // for (int level = 1; level < config::kNumLevels; level++) {
-    // if (!files_[level].empty()) {
-      // iters->push_back(NewConcatenatingIterator(options, level));
-    // }
-  // }
 }
 
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
   ParsedInternalKey parsed_key;
-  //printf("SaveValue,............................\n");
   if (!ParseInternalKey(ikey, &parsed_key)) {
-		// printf("SaveValue,.corrupt**********************\n");
     s->state = kCorrupt;
   } else {
-		 //printf("SaveValue, not corrupt,parsed_key.user_key=%s,s->user_key=%s |||||||||||||||||||||||)\n",parsed_key.user_key.data(),s->user_key.data());
-		 //printf("cmp_result=%d..........................\n", s->ucmp->Compare(parsed_key.user_key, s->user_key));
-		 		//printf("parsed_key.user_key size=%d, s->user_key size=%d\n",parsed_key.user_key.size(), s->user_key.size() );
-
-		  //printf("cmp_result222222=%d..........................\n", s->ucmp->Compare(Slice("dd"),Slice("dd")));
     if (s->ucmp->Compare(parsed_key.user_key, s->user_key) == 0) {
-			 //printf("SaveValue, in if888888888888888888\n");
       s->state = (parsed_key.type == kTypeValue) ? kFound : kDeleted;
       if (s->state == kFound) {
-		//printf("SaveValue, found+++++++++++++++++++++++\n");
         s->value->assign(v.data(), v.size());
       }
     }
@@ -326,9 +299,6 @@ void Version::SearchThread() {
       exit(9);
     }
 
-    //*********construct local searching key begin**********
-    //printf("version_set, con search, begin construct local\n");
-
     current_id=to_search->logical_file_counter;
     to_search->logical_file_counter++;//the next thread will search the next logical file.//the next thread will search the next logical file.
     LogicalMetaData *logical_f = logical_files_set[current_id];
@@ -371,7 +341,7 @@ void Version::SearchThread() {
           saver_.ucmp->Compare(saver_.user_key, physical_f->largest.user_key()) > 0) {
           // Not contained in this physical file.
           // saver_.state=kNotFound;
-        } else {  //Possibely contained in this SST file.
+        } else {  // Possibely contained in this SST file.
           uint64_t physical_file_number= physical_f->number;
           uint64_t physical_file_size= physical_f->file_size;
           s = vset_->table_cache_->Get(options_local, physical_file_number, physical_file_size, ikey_local, &saver_, SaveValue);
@@ -460,7 +430,7 @@ Status Version::Get(const ReadOptions& options,
   Slice user_key = k.user_key();
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
-  Searching_item *new_item= new Searching_item();;
+  Searching_item *new_item= new Searching_item();
   new_item->ikey=ikey;;//Slice(right->data_for_ikey_, ikey.size());//construct Slice ikey for the link item.
   new_item->options= options;//provide argument for thread search
   new_item->ucmp=ucmp;
@@ -593,6 +563,50 @@ Status Version::Get(const ReadOptions& options,
       }
     }
 #else
+    for (uint32_t i = 0; i < num_physical_files; ++i) {
+      SearchItem* item = new SearchItem();
+      Saver* saver = new Saver();
+      saver->state = kNotFound;
+      saver->ucmp = ucmp;
+      saver->user_key = user_key;
+      saver->value = value;
+
+      item->ikey = ikey;
+      item->options = options;
+      item->saver = saver;
+      item->id = current_thread;
+      
+      vset_->iQueue_.Push(*item);
+    }
+
+    std::vector<SearchItem> sv;
+    for (uint32_t i = 0; i < num_physical_files; ++i) {
+      SearchItem* item;
+      vset_->mapQueue_[current_thread].Pop(item);
+      sv.push_back(*item);
+    }
+
+    for (uint32_t i = 0; i < num_physical_files; ++i) {
+      auto item = sv[i];
+      Status s = item.status;
+      Saver saver = *item.saver;
+      if (!s.ok()) {
+        return s;
+      }
+      switch (saver.state) {
+        case kNotFound:
+          continue;      // Keep searching in other files
+        case kFound:
+          return s;
+        case kDeleted:
+          s = Status::NotFound(Slice());  // Use empty error message for speed
+          return s;
+        case kCorrupt:
+          s = Status::Corruption("corrupted key for ", user_key);
+          return s;
+      }
+    }
+
 
 #endif
   } // end searching a level, may be have found and returned
@@ -902,6 +916,11 @@ VersionSet::VersionSet(const std::string& dbname,
       dummy_versions_(this),
       current_(NULL) {
   AppendVersion(new Version(this));
+#ifdef READ_PARALLEL
+  for (int i = 0; i < NUM_READ_THREADS; ++i) {
+    Env::Default()->StartThread(&VersionSet::SearchWrapper, this);
+  }
+#endif
 }
 
 VersionSet::~VersionSet() {
@@ -1322,6 +1341,27 @@ int64_t VersionSet::NumLevelBytes(int level) const {
   assert(level < config::kNumLevels);
   return TotalFileSize(current_->logical_files_[level]);
 }
+
+#ifdef READ_PARALLEL
+void VersionSet::SearchThread() {
+  SearchItem* item;
+
+  while (iQueue_.Pop(item)) {
+    PhysicalMetaData* f;
+    Saver* saver;
+    Slice ikey = item->ikey;
+    ReadOptions options;
+    Status s;
+    f = item->file;
+    saver = item->saver;  
+    options = item->options;
+
+    s = table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);
+    item->status = s;
+    mapQueue_[item->id].Push(*item);
+  }
+}
+#endif
 
 Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   ReadOptions options;

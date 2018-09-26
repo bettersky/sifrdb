@@ -859,64 +859,12 @@ class Benchmark {
   
  void xCompact(ThreadState* thread){
 	printf("db_bench, xcompact!\n");
-	
-	// void *dbim;
-	// db_->get_dbimpl(&dbim);					
-	// DBImpl *impl=(DBImpl*) dbim;	
-	
-	// for(int i=0;i<=getLevel(impl);i++){
-		// int num=impl->versions_->current_->logical_files_[i].size();
-		// printf("Lev %d, logical num %d\n",i,num);
-	// }	
 	exit(9);
-		//db_->Compact_level(3);
 } 
 //----------------------------------------------------------------------------------  
 
 void LoadYCSB(ThreadState* thread) {
 	DoLoad(thread, false);
-}
-
-DBImpl *get_dbimpl(){
-	void *dbim;
-	db_->get_dbimpl(&dbim);					
-	DBImpl *impl=(DBImpl*) dbim;
-	return impl;
-
-}
-int getLevel(){
-
-					// void *dbim;
-					// db_->get_dbimpl(&dbim);					
-					// DBImpl *impl=(DBImpl*) dbim;
-	//impl->versions_->current()->NumFiles(7);
-	//config::kNumLevels;
-	//printf("kNumLevels=%d\n",config::kNumLevels );
-	int cur_level=0;
-	for(int i=0;i<config::kNumLevels;i++){
-		if(get_dbimpl()->versions_->current()->NumFiles(i) >0 ){
-			cur_level=i;
-		}
-		//printf("dbimpl, getlevel, lev=%d num=%d\n",i,versions_->current()->NumFiles(i) );
-	}
-	return cur_level;
-}
-
-
-int get_ssst_num_in_lev(int lev){
-	void *dbim;
-	db_->get_dbimpl(&dbim);					
-	DBImpl *impl=(DBImpl*) dbim;
-	
-	return impl->versions_->current_->logical_files_[lev].size();
-}
-int get_sst_num(){
-	int lev= getLevel();
-	int count=0;
-	for(int i=0;i<=lev;i++){
-		count+=get_dbimpl()->versions_->current_->logical_files_[i].size();
-	}
-	return count;
 }
 
 int get_fly(){
@@ -996,22 +944,13 @@ void DoLoad(ThreadState* thread, bool seq){
     if(0==ops%rate){
       clock_gettime(CLOCK_MONOTONIC,&stage); 
       double stage_time=( (int)stage.tv_sec+((double)stage.tv_nsec)/s_to_ns ) - ( (int)begin.tv_sec+((double)begin.tv_nsec)/s_to_ns );
-      
-      printf("done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db),get_fly(),  get_sst_num());
-      fprintf(stats_log_,"done_:time= %012ld  %f gf=%d cur_lev=%d wa= %f space= %d MB, fly= %d sst_num=%d [", ops, stage_time,growth_factor,getLevel(), (double)diskTrafficBytes/bytes, space_using(FLAGS_db), get_fly(),  get_sst_num());
-      
-      // int *num_in_levels=(int*)arg;
-      // int sequence=0;
       PrintStats("leveldb.sstables");
       fflush(stats_log_);
     }
     
     if (!s.ok()) {
       fprintf(stderr, " I am db_bench.cc,  DoLoad, put error: %s\n", s.ToString().c_str());
-      //printf("db_bench, opened=%d,closed=%d\n",opened,closed);
-
       sleep(99999);
-      
       exit(1);
     }
   }
@@ -1019,7 +958,6 @@ void DoLoad(ThreadState* thread, bool seq){
 	fclose(stats_log_);
 	printf("write finished\n");
   thread->stats.AddBytes(bytes);
-	
   }
 
 int tcounter=0;//thread counter
@@ -1220,7 +1158,6 @@ void print_write_tail() {
 }
 
 void DoWrite(ThreadState* thread, bool seq) {
-  fprintf(stats_log_, "db_bench start writing\n");
   if (num_ != FLAGS_num) {
     char msg[100];
     snprintf(msg, sizeof(msg), "(%d ops)", num_);
@@ -1261,10 +1198,10 @@ void DoWrite(ThreadState* thread, bool seq) {
       //         i, (float)(end_s - now_s)/1000000.0, 
       //         (float)diskTrafficBytes/bytes, w_amp, 
       //         mem_use, dir_size);
-      fprintf(stats_log_, "stage_time: %010d total_time: %10.1f s  wa: %3.1f w_amp: %3.1f %s space: %10d MB\n",
-              i, (float)(end_s - now_s)/1000000.0, 
-              (float)diskTrafficBytes/bytes, w_amp, 
-              mem_use, dir_size);
+      // fprintf(stats_log_, "stage_time: %010d total_time: %10.1f s  wa: %3.1f w_amp: %3.1f %s space: %10d MB\n",
+      //         i, (float)(end_s - now_s)/1000000.0, 
+      //         (float)diskTrafficBytes/bytes, w_amp, 
+      //         mem_use, dir_size);
       PrintStats("leveldb.sstables");
     }
         

@@ -514,6 +514,11 @@ class PosixEnv : public Env {
     usleep(micros);
   }
 
+  virtual pthread_t GetThreadId() {
+    pthread_t tid = pthread_self();
+    return tid;
+  }
+
  private:
   void PthreadCall(const char* label, int result) {
     if (result != 0) {
