@@ -1,4 +1,4 @@
-# sifrdb
+# SifrDB
 
 SifrDB: A Unified Solution for Write-Optimized Key-Value Stores in Large Datacenter
 =========
