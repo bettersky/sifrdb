@@ -330,30 +330,30 @@ class PosixEnv : public Env {
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                       RandomAccessFile** result) {
-      *result = NULL;
-      Status s;
-      int fd = open(fname.c_str(), O_RDONLY);
-      if (fd < 0) {
-        s = IOError(fname, errno);
-      } else if (0) {//mmap_limit_.Acquire()
-        uint64_t size;
-        s = GetFileSize(fname, &size);
-        if (s.ok()) {
-          void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
-          if (base != MAP_FAILED) {
-            *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
-          } else {
-            s = IOError(fname, errno);
-          }
+    *result = NULL;
+    Status s;
+    int fd = open(fname.c_str(), O_RDONLY);
+    if (fd < 0) {
+      s = IOError(fname, errno);
+    } else if (0) { //mmap_limit_.Acquire()
+      uint64_t size;
+      s = GetFileSize(fname, &size);
+      if (s.ok()) {
+        void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+        if (base != MAP_FAILED) {
+          *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
+        } else {
+          s = IOError(fname, errno);
         }
-        close(fd);
-        if (!s.ok()) {
-          mmap_limit_.Release();
-        }
-      } else {
-        *result = new PosixRandomAccessFile(fname, fd);
       }
-      return s;
+      close(fd);
+      if (!s.ok()) {
+        mmap_limit_.Release();
+      }
+    } else {
+      *result = new PosixRandomAccessFile(fname, fd);
+    }
+    return s;
   }
 
   virtual Status NewWritableFile(const std::string& fname,
@@ -367,6 +367,19 @@ class PosixEnv : public Env {
     } else {
       *result = new PosixWritableFile(fname, f);
 	  
+    }
+    return s;
+  }
+
+  virtual Status NewAppendableFile(const std::string& fname,
+                                  WritableFile** result) {
+    Status s;
+    FILE* f = fopen(fname.c_str(), "a");
+    if (f == NULL) {
+      *result = NULL;
+      s = IOError(fname, errno);
+    } else {
+      *result = new PosixWritableFile(fname, f);
     }
     return s;
   }
