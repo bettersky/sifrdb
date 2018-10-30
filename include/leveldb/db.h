@@ -69,9 +69,9 @@ class DB {
   virtual Status Delete(const WriteOptions& options, const Slice& key) = 0;
 
 
-  virtual int getLevel()=0;
-  virtual int test(void *arg)=0;
-  virtual int get_dbimpl(void **arg)=0;
+  // virtual int getLevel()=0;
+  // virtual int test(void *arg)=0;
+  // virtual int get_dbimpl(void **arg)=0;
 
   // Apply the specified updates to the database.
   // Returns OK on success, non-OK on failure.

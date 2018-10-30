@@ -55,12 +55,6 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
   Slice key(buf, sizeof(buf));
   *handle = cache_->Lookup(key);
   if (*handle == NULL) {
-	//printf("table cache.cc, find table out of cache, from page cache or disk, file_number=%d, file_size=%d MB\n",file_number,file_size/1024/1024);
-	//static int x=0;
-	//x++;
-	//if(x==18){
-		//exit(9);
-	//}
     std::string fname = TableFileName(dbname_, file_number);
     RandomAccessFile* file = NULL;
     Table* table = NULL;
@@ -94,7 +88,6 @@ Iterator* TableCache::NewIterator(const ReadOptions& options,
                                   uint64_t file_number,
                                   uint64_t file_size,
                                   Table** tableptr) {
-//printf("tableache, begin, file number=%d\n",file_number);
   if (tableptr != NULL) {
     *tableptr = NULL;
   }
@@ -121,38 +114,13 @@ Status TableCache::Get(const ReadOptions& options,
                        void* arg,
                        void (*saver)(void*, const Slice&, const Slice&)) {
   Cache::Handle* handle = NULL;
-//#define s_to_ns 1000000000  
-
-
-//struct timespec findtable_seek_begin, findtable_seek_end;
-//clock_gettime(CLOCK_MONOTONIC,&findtable_seek_begin);   
-  Status s = FindTable(file_number, file_size, &handle);//find sst index in cache
-//clock_gettime(CLOCK_MONOTONIC,&findtable_seek_end); 
-//durations[7]+=( (int)findtable_seek_end.tv_sec+((double)findtable_seek_end.tv_nsec)/s_to_ns ) - ( (int)findtable_seek_begin.tv_sec+((double)findtable_seek_begin.tv_nsec)/s_to_ns );
-
-  //printf("table_cache.cc, file_number=%d,file_size=%f MB----------------\n",file_number, (double)file_size/1024/1024);
-  //flag1=0;
-  //int i=0;
-  //if( (file_size/1024/1024)>i && (file_size/1024/1024)<i*10){
-		//exit(9);
-		//flag1=1;
-		//printf("table_cache.cc, file_number=%d,file_size=%f MB----------------\n",file_number, (double)file_size/1024/1024);
-  //}
- 
+  // find sst index in cache
+  Status s = FindTable(file_number, file_size, &handle); 
   if (s.ok()) {
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
-	//printf("table_cache.cc,before internalGet file_number=%d,file_size=%d MB\n",file_number, file_size/1024/1024);
-//struct timespec InternalGet_begin, InternalGet_end;
-//clock_gettime(CLOCK_MONOTONIC,&InternalGet_begin); 
     s = t->InternalGet(options, k, arg, saver);
-
-//clock_gettime(CLOCK_MONOTONIC,&InternalGet_end); 
-//durations[8]+=( (int)InternalGet_end.tv_sec+((double)InternalGet_end.tv_nsec)/s_to_ns ) - ( (int)InternalGet_begin.tv_sec+((double)InternalGet_begin.tv_nsec)/s_to_ns );
-
-	//printf("table_cache.cc,after internalGet file_number=%d,file_size=%d MB\n",file_number, file_size/1024/1024);
     cache_->Release(handle);
   }
-  
 
   return s;
 }

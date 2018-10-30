@@ -33,6 +33,10 @@ class MergingIterator : public Iterator {
   virtual bool IsNewSSTTable() {
 		return current_->IsNewSSTTable();
 	}
+
+  virtual PhysicalMetaData* GetSSTTableMeta() {
+    return current_->GetSSTTableMeta();
+  }
 	
 	virtual bool IsOverlapped() {
     //printf("merger.cc,isOverlapped begin\n");
@@ -41,7 +45,6 @@ class MergingIterator : public Iterator {
     int overlap=0;
     for(int i=0;i<n_;i++){
       IteratorWrapper* child = &children_[i];
-
       if(&children_[i]==current_) {//skip the current_ itself
         continue;
       } else if (children_[i].Valid()) {
@@ -190,11 +193,9 @@ class MergingIterator : public Iterator {
 void MergingIterator::FindSmallest() {
   IteratorWrapper* smallest = NULL;
   //printf("merger.cc, FindSmallest, begin---------------------------\n");
-
   for (int i = 0; i < n_; i++) {
     IteratorWrapper* child = &children_[i];
     if (child->Valid()) {
-
       if (smallest == NULL) {
         smallest = child;
       } else if (comparator_->Compare(child->key(), smallest->key()) < 0) {

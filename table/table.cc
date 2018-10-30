@@ -239,78 +239,37 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
                           void* arg,
                           void (*saver)(void*, const Slice&, const Slice&)) { 
   Status s;
-  //printf("table.cc, internal get, begin==================\n");
-   //printf("table.cc before index_block new\n");
-//#define s_to_ns 1000000000  
- Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
- 
-	
-    //if(flag1==1) flag=0; 
-	//flag=0;
-//struct timespec index_seek_begin, index_seek_end;
-//clock_gettime(CLOCK_MONOTONIC,&index_seek_begin); 
-  iiter->Seek(k);//seek the index block to locate data block. this seek is implmented in block.cc. binary search is used.
-//clock_gettime(CLOCK_MONOTONIC,&index_seek_end); 
-//durations[1]+=( (int)index_seek_end.tv_sec+((double)index_seek_end.tv_nsec)/s_to_ns ) - ( (int)index_seek_begin.tv_sec+((double)index_seek_begin.tv_nsec)/s_to_ns );
-   //flag=0;
-//printf("table.cc, internal get, index_seek time=%f ms\n",dur*1000);
+  Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+  iiter->Seek(k); //seek the index block to locate data block. this seek is implmented in block.cc. binary search is used.
 
   if (iiter->Valid()) {
-  
-
-
- 
-    Slice handle_value = iiter->value();//key:offset_:size_
+    Slice handle_value = iiter->value(); // key:offset_:size_
     FilterBlockReader* filter = rep_->filter;
     BlockHandle handle;
 	//printf("table.cc, internal get, filter is %d\n",filter != NULL);
     if (filter != NULL &&
         handle.DecodeFrom(&handle_value).ok() &&
         !filter->KeyMayMatch(handle.offset(), k)) {
-			printf("table.cc, internal get, filter not found++++++++++++\n");
+			// printf("table.cc, internal get, filter not found++++++++++++\n");
       // Not found
     } else {
-	//printf("table.cc before block_iter reader\n");
-	
-//struct timespec test_begin, test_end;
-//clock_gettime(CLOCK_MONOTONIC,&test_begin); 
       Iterator* block_iter = BlockReader(this, options, iiter->value());
-//clock_gettime(CLOCK_MONOTONIC,&test_end); 
-//durations[9]+=( (int)test_end.tv_sec+((double)test_end.tv_nsec)/s_to_ns ) - ( (int)test_begin.tv_sec+((double)test_begin.tv_nsec)/s_to_ns );
-
-
-	  //printf("table.cc, internal get, come to blcok_iter->Seek\n");
-	  //flag=0;
-	 //if(flag1==1) flag=1;
-	 
-//struct timespec block_seek_begin, block_seek_end;
-//clock_gettime(CLOCK_MONOTONIC,&block_seek_begin); 
       block_iter->Seek(k);//seek the block to locate the key
-//clock_gettime(CLOCK_MONOTONIC,&block_seek_end); 
-//durations[6]+=( (int)block_seek_end.tv_sec+((double)block_seek_end.tv_nsec)/s_to_ns ) - ( (int)block_seek_begin.tv_sec+((double)block_seek_begin.tv_nsec)/s_to_ns );
-
-	  //flag=0;
-	  //printf("table.cc, internal get, after blcok_iter->Seek\n");
-
       if (block_iter->Valid()) {
-		//printf("table.cc, internal get, come to saver, k=%s, block_iter->key()=%s\n",k.data(),block_iter->key().data());
+		    //printf("table.cc, internal get, come to saver, k=%s, block_iter->key()=%s\n",k.data(),block_iter->key().data());
         (*saver)(arg, block_iter->key(), block_iter->value());
-		//printf("table.cc, internal get, come to after saver\n");
-		//printf("table.cc, internal get,tkey=%s, key=%s\n", k.data(),block_iter->key().data());
+		    //printf("table.cc, internal get, come to after saver\n");
+		    //printf("table.cc, internal get,tkey=%s, key=%s\n", k.data(),block_iter->key().data());
       }
       s = block_iter->status();
       delete block_iter;
     }
-	
-
-
   }
   
   if (s.ok()) {
     s = iiter->status();
   }
   delete iiter;
-  
 
   return s;
 }

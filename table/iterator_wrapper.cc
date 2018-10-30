@@ -3,7 +3,7 @@
 
 namespace leveldb {
 
-	void IteratorWrapper::NextSSTTable(){
+	void IteratorWrapper::NextSSTTable() {
 		iter_->NextSSTTable();
 		Update();
 	}
@@ -48,8 +48,4 @@ void IteratorWrapper::Update() {
       key_ = iter_->key();
     }
 }
-
-
-
-
 }

@@ -86,7 +86,7 @@ Version::~Version() {
   }
 }
 
-// find the physical file that possiblely includes the key,  in the given logical file
+// Find the physical file that possiblely includes the key,  in the given logical file
 int FindFile(const InternalKeyComparator& icmp,
 			 const LogicalMetaData& logical_file,
              const Slice& key) {
@@ -138,10 +138,10 @@ class Version::LogicalSSTNumIterator : public Iterator {
   }
 
 	virtual Slice currentSSTLargestKey() {
-		return flist_->physical_files[index_].largest.Encode() ;
+		return flist_->physical_files[index_].largest.Encode();
 	}
 	virtual Slice currentSSTSmallestKey() {
-		return flist_->physical_files[index_].smallest.Encode() ;
+		return flist_->physical_files[index_].smallest.Encode();
 	}
 
 	virtual Slice nextSSTSmallestKey() {
@@ -149,6 +149,8 @@ class Version::LogicalSSTNumIterator : public Iterator {
 	}
 
 	PhysicalMetaData* GetSSTTableMeta() {
+    //printf("%d\n", index_);
+    //printf("%d\n", flist_->physical_files[index_].smallest.Encode());
 		return const_cast<PhysicalMetaData*>(&flist_->physical_files[index_]);
 	}
 
@@ -208,18 +210,13 @@ static Iterator* GetFileIterator(void* arg,
   }
 }
 
-Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,int level) const {
-	printf("version_set.cc exit\n");
-	exit(9);
-}
-
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
-	for(int level=0;level<config::kNumLevels;level++){
-		for(int i=0;i<logical_files_[level].size();i++){
+	for (int level = 0; level < config::kNumLevels; level++) {
+		for (int i = 0; i < logical_files_[level].size(); i++) {
 			iters->push_back(
-							NewTwoLevelIterator(new LogicalSSTNumIterator(vset_->icmp_, logical_files_[level][i]),&GetFileIterator, vset_->table_cache_, options)
-							);
+				NewTwoLevelIterator(new LogicalSSTNumIterator(
+          vset_->icmp_, logical_files_[level][i]), &GetFileIterator, vset_->table_cache_, options));
 		}
 	}
 }
@@ -227,9 +224,12 @@ void Version::AddIterators(const ReadOptions& options,
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
   ParsedInternalKey parsed_key;
+
   if (!ParseInternalKey(ikey, &parsed_key)) {
     s->state = kCorrupt;
   } else {
+    // printf("parsed_key: %s\n", parsed_key.user_key);
+    // printf("saver user_key: %s\n", s->user_key);
     if (s->ucmp->Compare(parsed_key.user_key, s->user_key) == 0) {
       s->state = (parsed_key.type == kTypeValue) ? kFound : kDeleted;
       if (s->state == kFound) {
@@ -239,7 +239,7 @@ static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   }
 }
 
-static bool NewestFirst(LogicalMetaData* a, LogicalMetaData* b) {
+static bool NewestFirst(PhysicalMetaData* a, PhysicalMetaData* b) {
   return a->number > b->number;
 }
 
@@ -469,7 +469,7 @@ Status Version::Get(const ReadOptions& options,
   mutex_for_searching_queue.Lock();	//Needing lock because the searching threads may be accessing the item.
   Searching_item *temp = searching_right;//for delete
   searching_right=searching_right->pre;
-  if(searching_right==NULL){//The last item is deleted, and searching_left also point to that item.
+  if(searching_right==NULL){  //The last item is deleted, and searching_left also point to that item.
     searching_left=NULL;
   }
   queue_size--;
@@ -531,6 +531,8 @@ Status Version::Get(const ReadOptions& options,
 
 		if (tmp.empty()) continue;  //continue to search the next level
 
+    std::sort(tmp.begin(), tmp.end(), NewestFirst);
+    //std::reverse(tmp.begin(), tmp.end());
 		PhysicalMetaData* const* physical_files = &tmp[0]; //points to the vector of files.
 		int num_physical_files = tmp.size();
 #ifndef READ_PARALLEL
@@ -565,17 +567,23 @@ Status Version::Get(const ReadOptions& options,
 #else
     for (uint32_t i = 0; i < num_physical_files; ++i) {
       SearchItem* item = new SearchItem();
-      Saver* saver = new Saver();
-      saver->state = kNotFound;
-      saver->ucmp = ucmp;
-      saver->user_key = user_key;
-      saver->value = value;
+      // Saver* saver = new Saver();
+      // saver->state = kNotFound;
+      // saver->ucmp = ucmp;
+      // saver->user_key = user_key;
+      // saver->value = value;
+      Saver saver;
+      saver.state = kNotFound;
+      saver.ucmp = ucmp;
+      saver.user_key = user_key;
+      saver.value = value;
 
       item->ikey = ikey;
       item->options = options;
       item->saver = saver;
       item->id = current_thread;
-      
+      item->file = tmp[i];
+
       vset_->iQueue_.Push(*item);
     }
 
@@ -589,7 +597,7 @@ Status Version::Get(const ReadOptions& options,
     for (uint32_t i = 0; i < num_physical_files; ++i) {
       auto item = sv[i];
       Status s = item.status;
-      Saver saver = *item.saver;
+      Saver saver = item.saver;
       if (!s.ok()) {
         return s;
       }
@@ -940,66 +948,62 @@ void VersionSet::AddFileLevelBloomFilterInfo(uint64_t file_number, std::string* 
 
 int filter_counter=0;
 void VersionSet::PopulateBloomFilterForFile(PhysicalMetaData* file, FileLevelFilterBuilder* file_level_filter_builder) {
-
 	printf("version set, PopulateBloomFilterForFile begin\n ");
-
 	uint64_t file_number = file->number;
 	uint64_t file_size = file->file_size;
 	int cnt = 0;
 
 	if (file_level_bloom_filter[file_number] != NULL) {
-		// This means that we have already calculated the bloom filter for this file and files are immutable (wrt a file number)
+		// This means that we have already calculated the bloom filter for this file and files
+    //  are immutable (wrt a file number)
 		return;
 	}
 
-    Iterator* iter = table_cache_->NewIterator(ReadOptions(), file_number, file_size);
-    iter->SeekToFirst();
-    int index = 0;
-    while (iter->Valid()) {
-    	cnt++;
-    	file_level_filter_builder->AddKey(iter->key());
-    	index++;
-    	iter->Next();
+  Iterator* iter = table_cache_->NewIterator(ReadOptions(), file_number, file_size);
+  iter->SeekToFirst();
+  int index = 0;
+  while (iter->Valid()) {
+    cnt++;
+    file_level_filter_builder->AddKey(iter->key());
+    index++;
+    iter->Next();
+  }
+  if (cnt > 0) {
+    std::string* filter_string = file_level_filter_builder->GenerateFilter();
+    assert (filter_string != NULL);
+
+    printf("versionset, PopulateBloomFilterForFile, str length=%d\n", filter_string->size());
+    //fprintf(filter_file,"%d %d\n",file_number,filter_string->size());
+    for(int i=0;i<filter_string->size();i++){
+      fprintf(filter_file,"%c",(*filter_string)[i]);
     }
-    if (cnt > 0) {
-		std::string* filter_string = file_level_filter_builder->GenerateFilter();
-		assert (filter_string != NULL);
+    fprintf(filter_file,"\n");
+    fflush(filter_file);
 
-		printf("versionset, PopulateBloomFilterForFile, str length=%d\n", filter_string->size());
-		//fprintf(filter_file,"%d %d\n",file_number,filter_string->size());
-		for(int i=0;i<filter_string->size();i++){
-			fprintf(filter_file,"%c",(*filter_string)[i]);
-		}
-		fprintf(filter_file,"\n");
-		fflush(filter_file);
+    filter_counter++;
 
-		filter_counter++;
-
-		if(filter_counter>=2){
-			exit(9);
-		}
-		AddFileLevelBloomFilterInfo(file_number, filter_string);
+    if(filter_counter>=2){
+      exit(9);
     }
-    delete iter;
+    AddFileLevelBloomFilterInfo(file_number, filter_string);
+  }
+  delete iter;
 }
 
-void VersionSet::Generate_file_level_bloom_filter(){
+void VersionSet::Generate_file_level_bloom_filter() {
+  Log(options_->info_log, "Recovering Generate_file_level_bloom_filter begin");
+  //If the file named "file_level_bloom_filter" does not exist, generate the file.
+  //Else, read the file to generate filter.
+  filter_file = fopen("file_level_bloom_filter", "w+");
 
-	printf("version set, Generate_file_level_bloom_filter begin\n ");
-	//If the file named "file_level_bloom_filter" does not exist, generate the file.
-	//Else, read the file to generate filter.
+  const FilterPolicy *filter_policy = options_->filter_policy;
+  FileLevelFilterBuilder file_level_filter_builder(filter_policy);
+  if (filter_policy == NULL) {
+    Log(options_->info_log, "Generate_file_level_bloom_filter, filter_policy is NULL, do not Generate_file_level_bloom_filter");
+    return;
+  }
 
-	 filter_file=fopen("file_level_bloom_filter","w+");
-
-	 const FilterPolicy *filter_policy = options_->filter_policy;
-	FileLevelFilterBuilder file_level_filter_builder(filter_policy);
-
-    if (filter_policy == NULL) {
-		printf("version set, Generate_file_level_bloom_filter, filter_policy is NULL, do not Generate_file_level_bloom_filter\n");
-    	return;
-    }
-
-    Version* current = current_;
+  Version* current = current_;
 	current->Ref();
 	for (int i = 0; i < config::kNumLevels; i++) {
 		for(int j=0;j< current->logical_files_[i].size();j++){
@@ -1010,7 +1014,6 @@ void VersionSet::Generate_file_level_bloom_filter(){
 	}
 	//file_level_filter_builder.Destroy();
 	current->Unref();
-	exit(9);
 }
 
 void VersionSet::AppendVersion(Version* v) {
@@ -1240,7 +1243,6 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
 
 Status VersionSet::WriteSnapshot(log::Writer* log) {
   // TODO: Break up into multiple records to reduce memory usage on recovery?
-	printf("version_set.cc, WriteSnapshot, begin\n");
   // Save metadata
   VersionEdit edit;
   edit.SetComparatorName(icmp_.user_comparator()->Name());
@@ -1267,6 +1269,7 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
   return log->AddRecord(record);
 }
 
+// Num Level Logical Files 
 int VersionSet::NumLevelFiles(int level) const {
   assert(level >= 0);
   assert(level < config::kNumLevels);
@@ -1344,21 +1347,21 @@ int64_t VersionSet::NumLevelBytes(int level) const {
 
 #ifdef READ_PARALLEL
 void VersionSet::SearchThread() {
-  SearchItem* item;
+  SearchItem item;
 
-  while (iQueue_.Pop(item)) {
+  while (iQueue_.Pop(&item)) {
     PhysicalMetaData* f;
-    Saver* saver;
-    Slice ikey = item->ikey;
+    Saver saver;
+    Slice ikey = item.ikey;
     ReadOptions options;
     Status s;
-    f = item->file;
-    saver = item->saver;  
-    options = item->options;
+    f = item.file;
+    saver = item.saver;
+    options = item.options;
 
     s = table_cache_->Get(options, f->number, f->file_size, ikey, &saver, SaveValue);
-    item->status = s;
-    mapQueue_[item->id].Push(*item);
+    item.status = s;
+    mapQueue_[item.id].Push(item);
   }
 }
 #endif

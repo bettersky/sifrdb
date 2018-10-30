@@ -183,9 +183,6 @@ DBImpl::~DBImpl() {
   while (num_bg_threads_ > 0) {
     bg_fg_cv_.Wait();
   }
-  // while (bg_compaction_scheduled_) {
-  //   bg_cv_.Wait();
-  // }
   mutex_.Unlock();
 
   if (db_lock_ != NULL) {
@@ -216,7 +213,7 @@ Status DBImpl::NewDB() {
   new_db.SetLastSequence(0);
 
   const std::string manifest = DescriptorFileName(dbname_, 1);
-	printf("db_impl, NewDB, manifest=%s\n",manifest.c_str());
+	//printf("db_impl, NewDB, manifest=%s\n",manifest.c_str());
   WritableFile* file;
   Status s = env_->NewWritableFile(manifest, &file);
   if (!s.ok()) {
@@ -226,7 +223,7 @@ Status DBImpl::NewDB() {
     log::Writer log(file);
     std::string record;
     new_db.EncodeTo(&record);
-		 printf("db_impl, NewDB, record=%s\n",record.c_str());
+		//printf("db_impl, NewDB, record=%s\n",record.c_str());
     s = log.AddRecord(record);
     if (s.ok()) {
       s = file->Close();
@@ -240,8 +237,7 @@ Status DBImpl::NewDB() {
     env_->DeleteFile(manifest);
   }
   
-  printf("db_impl, NewDB,end, s.ok()=%d\n",s.ok() );
-  //exit(9);
+  //printf("db_impl, NewDB,end, s.ok()=%d\n",s.ok() );
   return s;
 }
 
@@ -541,7 +537,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   return s;
 }
 
-void DBImpl::CompactRange(const Slice* begin, const Slice* end) {//blank
+void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
   // int max_level_with_files = 1;
   // {
     // MutexLock l(&mutex_);
@@ -559,40 +555,40 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {//blank
 }
 
  void DBImpl::TEST_CompactRange(int level, const Slice* begin,const Slice* end) {
-  // assert(level >= 0);
-  // assert(level + 1 < config::kNumLevels);
+  assert(level + 1 < config::kNumLevels);
 
-  // InternalKey begin_storage, end_storage;
+  InternalKey begin_storage, end_storage;
 
-  // ManualCompaction manual;
-  // manual.level = level;
-  // manual.done = false;
-  // if (begin == NULL) {
-    // manual.begin = NULL;
-  // } else {
-    // begin_storage = InternalKey(*begin, kMaxSequenceNumber, kValueTypeForSeek);
-    // manual.begin = &begin_storage;
-  // }
-  // if (end == NULL) {
-    // manual.end = NULL;
-  // } else {
-    // end_storage = InternalKey(*end, 0, static_cast<ValueType>(0));
-    // manual.end = &end_storage;
-  // }
+  ManualCompaction manual;
+  manual.level = level;
+  manual.done = false;
+  if (begin == NULL) {
+    manual.begin = NULL;
+  } else {
+    begin_storage = InternalKey(*begin, kMaxSequenceNumber, kValueTypeForSeek);
+    manual.begin = &begin_storage;
+  }
+  if (end == NULL) {
+    manual.end = NULL;
+  } else {
+    end_storage = InternalKey(*end, 0, static_cast<ValueType>(0));
+    manual.end = &end_storage;
+  }
 
-  // MutexLock l(&mutex_);
-  // while (!manual.done && !shutting_down_.Acquire_Load() && bg_error_.ok()) {
-    // if (manual_compaction_ == NULL) {  // Idle
-      // manual_compaction_ = &manual;
-      // MaybeScheduleCompaction();
-    // } else {  // Running either my compaction or another compaction.
-      // bg_cv_.Wait();
-    // }
-  // }
-  // if (manual_compaction_ == &manual) {
-    // // Cancel my manual compaction since we aborted early for some reason.
-    // manual_compaction_ = NULL;
-  // }
+  MutexLock l(&mutex_);
+  while (!manual.done && !shutting_down_.Acquire_Load() && bg_error_.ok()) {
+    if (manual_compaction_ == NULL) {  // Idle
+      manual_compaction_ = &manual;
+      bg_compaction_cv_.Signal();
+      bg_memtable_cv_.Signal();
+    } else {  // Running either my compaction or another compaction.
+      bg_fg_cv_.Wait();
+    }
+  }
+  if (manual_compaction_ == &manual) {
+    // Cancel my manual compaction since we aborted early for some reason.
+    manual_compaction_ = NULL;
+  }
  }
 
 Status DBImpl::TEST_CompactMemTable() {
@@ -602,7 +598,7 @@ Status DBImpl::TEST_CompactMemTable() {
     // Wait until the compaction completes
     MutexLock l(&mutex_);
     while (imm_ != NULL && bg_error_.ok()) {
-      bg_cv_.Wait();
+      bg_fg_cv_.Wait();
     }
     if (imm_ != NULL) {
       s = bg_error_;
@@ -739,6 +735,12 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
 }
 
+Status DBImpl::InstallEarlyCleaningResults() {
+  mutex_.AssertHeld();
+  Log(options_.info_log,  "EarlyCleaning: "
+      );
+}
+
 void DBImpl::EarlyCleaning(std::vector<uint64_t>& clean) {
 	// TODO: Storing the compaction journal before cleaning.
 	// Each level has a compaction journal. A journal entry contains the  contains the metadata of the persisted 
@@ -785,6 +787,7 @@ Status DBImpl::ConcatenatingCompaction(CompactionState* compact) {
     if (input->IsNewSSTTable()) {
       // no overlap. because the first key of the current is the smallest, so all the keys are smaller than other ssts.
       PhysicalMetaData *phy_file = input->GetSSTTableMeta();
+      //printf("%d\n", (*phy_file).number);
       if (input->IsOverlapped() == 0) {
         // write current file to keep logicial sstable 's key order
         FinishCompactionOutputFile(compact, input);
@@ -1315,6 +1318,11 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
   if (!writers_.empty()) {
     writers_.front()->cv.Signal();
   }
+
+  if (imm_ != NULL) {
+    has_imm_.Release_Store(imm_);
+    bg_memtable_cv_.Signal();
+  }
   return status;
 }
 
@@ -1378,7 +1386,6 @@ Status DBImpl::MakeRoomForWrite(bool force) {
     if (!bg_error_.ok()) {
       // Yield previous error
       s = bg_error_;
-      fprintf(stderr,"dbimpl,make error, 99999999999999999999999\n");
       break;
     } else if (allow_delay &&
               (versions_->NumLevelFiles(0) >=  growth_factor * 2)) {
@@ -1536,7 +1543,6 @@ DB::~DB() { }
 Status DB::Open(const Options& options, const std::string& dbname,
                 DB** dbptr) {
   *dbptr = NULL;
-
   DBImpl* impl = new DBImpl(options, dbname);
   impl->mutex_.Lock();
   VersionEdit edit;
@@ -1564,8 +1570,7 @@ Status DB::Open(const Options& options, const std::string& dbname,
   impl->bg_memtable_cv_.SignalAll();
   impl->mutex_.Unlock();
   if (s.ok()) {
-		printf("impl, open, before Generate_file_level_bloom_filter\n");
-		impl->versions_->Generate_file_level_bloom_filter();// 
+		// impl->versions_->Generate_file_level_bloom_filter();
     *dbptr = impl;
   } else {
     delete impl;

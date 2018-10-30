@@ -35,6 +35,9 @@ class TwoLevelIterator: public Iterator {
     return start_sst_;
 	}
 
+  virtual PhysicalMetaData* GetSSTTableMeta() {
+    return index_iter_.GetSSTTableMeta();
+  }
 	virtual Slice  currentSSTLargestKey(){
     return index_iter_.currentSSTLargestKey();
 	}

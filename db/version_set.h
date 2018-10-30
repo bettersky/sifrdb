@@ -79,7 +79,7 @@ class SearchItem {
     Slice ikey;
     Version* version;
     PhysicalMetaData* file;
-    Saver* saver;
+    Saver saver;
     ReadOptions options;
     Status status;
     pthread_t id;
@@ -133,8 +133,6 @@ class Version {
   friend class VersionSet;
 
   class LogicalSSTNumIterator;
-
-  Iterator* NewConcatenatingIterator(const ReadOptions&, int level) const;
 
   VersionSet* vset_;            // VersionSet to which this Version belongs
   Version* next_;               // Next version in linked list
@@ -296,9 +294,9 @@ class VersionSet {
       const InternalKey* begin,
       const InternalKey* end);
 
-  // Return the maximum overlapping data (in bytes) at next level for any
-  // file at a level >= 1.
-  int64_t MaxNextLevelOverlappingBytes();
+  // // Return the maximum overlapping data (in bytes) at next level for any
+  // // file at a level >= 1.
+  // int64_t MaxNextLevelOverlappingBytes();
 
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.

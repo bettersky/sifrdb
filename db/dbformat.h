@@ -22,13 +22,13 @@ namespace config {
 static const int kNumLevels = 20;
 
 // Level-0 compaction is started when we hit this many files.
-static const int kL0_CompactionTrigger = 500000;//default 4
+static const int kL0_CompactionTrigger = 4;//default 4
 
 // Soft limit on number of level-0 files.  We slow down writes at this point.
-static const int kL0_SlowdownWritesTrigger = 500;// default 8; 50 if log is turn on
+static const int kL0_SlowdownWritesTrigger = 8;// default 8; 50 if log is turn on
 
 // Maximum number of level-0 files.  We stop writes at this point.
-static const int kL0_StopWritesTrigger = 1000; //default 12,  100 if log is turn on
+static const int kL0_StopWritesTrigger = 12; //default 12,  100 if log is turn on
 
 // Maximum level to which a new compacted memtable is pushed if it
 // does not create overlap.  We try to push to level 2 to avoid the
