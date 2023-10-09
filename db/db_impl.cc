@@ -726,6 +726,11 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       compact->outputs.size(),
       static_cast<long long>(compact->total_bytes));
 
+  for(int i=0;i<compact->compaction->logical_files_inputs_.size();i++)
+  {
+    bytes_written_wa += compact->compaction->logical_files_inputs_[i]->file_size;
+  }
+
   // Add compaction outputs
   compact->compaction->AddInputDeletions(compact->compaction->edit());
   const int level = compact->compaction->level();
